@@ -1,0 +1,49 @@
+- generic [ref=e3]:
+  - img [ref=e5]
+  - generic [ref=e8]:
+    - button "हिन्दी" [ref=e10]:
+      - img [ref=e11]
+      - text: हिन्दी
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - img [ref=e18]
+          - generic [ref=e20]:
+            - generic [ref=e21]: RuralHealth
+            - generic [ref=e22]: ग्रामीण स्वास्थ्य प्रणाली
+        - paragraph [ref=e23]: Secure Digital Health Records · Offline-First · SIH-26133
+      - generic [ref=e24]:
+        - heading "Select your role" [level=2] [ref=e25]
+        - generic [ref=e26]:
+          - button "Patient View your health records" [ref=e27]:
+            - img [ref=e29]
+            - generic [ref=e31]: Patient
+            - generic [ref=e32]: View your health records
+          - button "Health Worker / ASHA Register & assess patients" [ref=e33]:
+            - img [ref=e35]
+            - generic [ref=e37]: Health Worker / ASHA
+            - generic [ref=e38]: Register & assess patients
+          - button "Doctor / PHC Staff Clinical dashboard & records" [ref=e39]:
+            - img [ref=e41]
+            - generic [ref=e43]: Doctor / PHC Staff
+            - generic [ref=e44]: Clinical dashboard & records
+          - button "Administrator Analytics & system management" [ref=e45]:
+            - img [ref=e47]
+            - generic [ref=e49]: Administrator
+            - generic [ref=e50]: Analytics & system management
+        - generic [ref=e61]:
+          - generic [ref=e62]:
+            - generic [ref=e63]: Mobile Number / Username
+            - generic [ref=e64]:
+              - generic [ref=e65]: "+91"
+              - textbox "9XXXXXXXXX" [active] [ref=e66]
+          - button "Send OTP" [disabled] [ref=e67]
+          - button "Login with PIN instead" [ref=e68]
+      - generic [ref=e51]:
+        - generic [ref=e52]:
+          - img [ref=e53]
+          - text: End-to-end encrypted · AES-256
+        - generic [ref=e55]: Offline-capable
+    - button "Accessibility Options" [ref=e58]:
+      - img [ref=e59]
+      - text: Accessibility Options

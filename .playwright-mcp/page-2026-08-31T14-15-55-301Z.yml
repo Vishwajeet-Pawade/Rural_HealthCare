@@ -1,0 +1,167 @@
+- generic [ref=e84]:
+  - complementary [ref=e85]:
+    - generic [ref=e87]:
+      - img [ref=e89]
+      - generic [ref=e91]:
+        - generic [ref=e92]: RuralHealth
+        - generic [ref=e93]: ग्रामीण स्वास्थ्य · SIH-26133
+    - generic [ref=e95]:
+      - generic [ref=e96]: MK
+      - generic [ref=e97]:
+        - generic [ref=e98]: Meena Kumari
+        - generic [ref=e99]: Health Worker · ASHA · Govindpur
+    - navigation [ref=e100]:
+      - generic [ref=e101]:
+        - button "Dashboard" [ref=e102]:
+          - img [ref=e103]
+          - text: Dashboard
+        - button "Register Patient" [ref=e105]:
+          - img [ref=e106]
+          - text: Register Patient
+        - button "Patient Profile" [ref=e108]:
+          - img [ref=e109]
+          - text: Patient Profile
+        - button "New Assessment" [ref=e111]:
+          - img [ref=e112]
+          - text: New Assessment
+        - button "AI Assessment" [active] [ref=e114]:
+          - img [ref=e115]
+          - text: AI Assessment
+        - button "Referrals" [ref=e117]:
+          - img [ref=e118]
+          - text: Referrals
+        - button "Offline Mode" [ref=e120]:
+          - img [ref=e121]
+          - text: Offline Mode
+        - button "Sync Center" [ref=e123]:
+          - img [ref=e124]
+          - text: Sync Center
+      - generic [ref=e126]:
+        - generic [ref=e127]: Switch Role (Demo)
+        - button "Doctor" [ref=e128]: Doctor
+        - button "Patient" [ref=e130]: Patient
+        - button "Administrator" [ref=e132]: Administrator
+    - generic [ref=e134]:
+      - generic [ref=e136]: Online
+      - button "Logout" [ref=e138]:
+        - img [ref=e139]
+        - text: Logout
+  - generic [ref=e141]:
+    - banner [ref=e142]:
+      - generic [ref=e143]:
+        - img [ref=e144]
+        - textbox "Search patient..." [ref=e146]
+      - button "Online" [ref=e147]:
+        - img [ref=e148]
+        - text: Online
+      - button "हि" [ref=e150]
+      - generic [ref=e151]:
+        - img [ref=e152]
+        - text: Encrypted
+    - main [ref=e154]:
+      - generic [ref=e370]:
+        - generic [ref=e371]:
+          - button [ref=e372]:
+            - img [ref=e373]
+          - generic [ref=e375]:
+            - heading "AI Risk Assessment" [level=1] [ref=e376]
+            - paragraph [ref=e377]: AI-assisted clinical decision support
+        - generic [ref=e378]:
+          - button "Ramesh Kumar" [ref=e379]: Ramesh Kumar
+          - button "Mohan Lal" [ref=e381]: Mohan Lal
+        - generic [ref=e383]:
+          - img [ref=e384]
+          - generic [ref=e386]:
+            - strong [ref=e387]: AI Decision Support
+            - text: — Not a Final Diagnosis. The final medical decision must remain with the authorized healthcare professional.
+        - generic [ref=e388]:
+          - generic [ref=e389]: RK
+          - generic [ref=e390]:
+            - generic [ref=e391]: Ramesh Kumar
+            - generic [ref=e392]: 45 · Male · Khetolai
+            - generic [ref=e393]: RHC-2026-3M9P71
+          - generic [ref=e394]:
+            - generic [ref=e395]: 31 Aug 2026, 09:47 AM
+            - generic [ref=e396]:
+              - text: "Confidence:"
+              - strong [ref=e397]: 91%
+        - generic [ref=e398]:
+          - generic [ref=e399]:
+            - generic [ref=e400]:
+              - generic [ref=e401]: AI Risk Assessment
+              - generic [ref=e402]:
+                - img [ref=e404]
+                - generic [ref=e406]:
+                  - generic [ref=e407]: CRITICAL
+                  - generic [ref=e409]: Requires IMMEDIATE emergency action
+            - generic [ref=e410]:
+              - img [ref=e411]
+              - generic [ref=e414]:
+                - generic [ref=e415]: 91%
+                - generic [ref=e416]: confidence
+          - generic [ref=e418]:
+            - img [ref=e420]
+            - generic [ref=e422]:
+              - generic [ref=e423]: Recommended Action
+              - paragraph [ref=e424]: Refer patient IMMEDIATELY to PHC Lunkaransar. Administer aspirin 325 mg if no allergy confirmed. Arrange ambulance/transport urgently. Do not delay referral.
+        - generic [ref=e425]:
+          - generic [ref=e426]:
+            - generic [ref=e427]:
+              - img [ref=e428]
+              - generic [ref=e430]: Symptoms Analysed
+            - generic [ref=e431]:
+              - generic [ref=e432]: Chest tightness
+              - generic [ref=e434]: Sweating
+              - generic [ref=e436]: Nausea
+              - generic [ref=e438]: Left arm tingling
+          - generic [ref=e440]:
+            - generic [ref=e441]:
+              - img [ref=e442]
+              - generic [ref=e444]: Abnormal Vitals
+            - generic [ref=e445]:
+              - generic [ref=e446]: "BP: 168/102 mmHg (↑↑)"
+              - generic [ref=e448]: "Heart Rate: 108 bpm (↑)"
+              - generic [ref=e450]: "SpO₂: 94% (↓)"
+          - generic [ref=e452]:
+            - generic [ref=e453]:
+              - img [ref=e454]
+              - generic [ref=e456]: Risk Factors
+            - generic [ref=e457]:
+              - generic [ref=e458]: Known hypertension
+              - generic [ref=e460]: Type 2 Diabetes (uncontrolled)
+              - generic [ref=e462]: Male, 45 years
+              - generic [ref=e464]: No prior cardiac evaluation
+        - generic [ref=e466]:
+          - generic [ref=e467]:
+            - img [ref=e468]
+            - generic [ref=e470]: AI Reasoning
+            - generic [ref=e471]: AI-GENERATED
+          - paragraph [ref=e472]: Patient presents with classic angina-equivalent symptoms in the context of poorly controlled hypertension and diabetes. The combination of chest tightness, left arm tingling, diaphoresis and elevated heart rate raises significant concern for acute coronary syndrome. SpO₂ at 94% with current presentation warrants immediate clinical evaluation.
+          - generic [ref=e473]:
+            - img [ref=e474]
+            - text: "Assessment generated: 31 Aug 2026, 09:47 AM · Model: RuralHealth AI v2.1"
+        - generic [ref=e476]:
+          - generic [ref=e477]: Patient History Considered
+          - generic [ref=e478]:
+            - generic [ref=e479]:
+              - generic [ref=e480]: Chronic Conditions
+              - generic [ref=e481]:
+                - generic [ref=e482]: Type 2 Diabetes
+                - generic [ref=e483]: Hypertension
+            - generic [ref=e484]:
+              - generic [ref=e485]: Current Medications
+              - generic [ref=e486]:
+                - generic [ref=e487]: Metformin
+                - generic [ref=e488]: Amlodipine
+                - generic [ref=e489]: Aspirin
+        - generic [ref=e490]:
+          - button "Create Emergency Referral" [ref=e491]:
+            - img [ref=e492]
+            - text: Create Emergency Referral
+          - button "View Full Patient Record" [ref=e494]:
+            - img [ref=e495]
+            - text: View Full Patient Record
+          - button "Save Assessment" [ref=e497]
+        - generic [ref=e498]:
+          - img [ref=e499]
+          - text: This assessment is a decision-support tool only. The final clinical decision must be made by an authorized healthcare professional. Do not delay emergency care based on AI output.

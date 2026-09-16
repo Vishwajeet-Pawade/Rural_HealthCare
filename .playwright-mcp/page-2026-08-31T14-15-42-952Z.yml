@@ -1,0 +1,235 @@
+- generic [ref=e84]:
+  - complementary [ref=e85]:
+    - generic [ref=e87]:
+      - img [ref=e89]
+      - generic [ref=e91]:
+        - generic [ref=e92]: RuralHealth
+        - generic [ref=e93]: ग्रामीण स्वास्थ्य · SIH-26133
+    - generic [ref=e95]:
+      - generic [ref=e96]: MK
+      - generic [ref=e97]:
+        - generic [ref=e98]: Meena Kumari
+        - generic [ref=e99]: Health Worker · ASHA · Govindpur
+    - navigation [ref=e100]:
+      - generic [ref=e101]:
+        - button "Dashboard" [ref=e102]:
+          - img [ref=e103]
+          - text: Dashboard
+        - button "Register Patient" [ref=e105]:
+          - img [ref=e106]
+          - text: Register Patient
+        - button "Patient Profile" [ref=e108]:
+          - img [ref=e109]
+          - text: Patient Profile
+        - button "New Assessment" [ref=e111]:
+          - img [ref=e112]
+          - text: New Assessment
+        - button "AI Assessment" [ref=e114]:
+          - img [ref=e115]
+          - text: AI Assessment
+        - button "Referrals" [ref=e117]:
+          - img [ref=e118]
+          - text: Referrals
+        - button "Offline Mode" [ref=e120]:
+          - img [ref=e121]
+          - text: Offline Mode
+        - button "Sync Center" [ref=e123]:
+          - img [ref=e124]
+          - text: Sync Center
+      - generic [ref=e126]:
+        - generic [ref=e127]: Switch Role (Demo)
+        - button "Doctor" [ref=e128]: Doctor
+        - button "Patient" [ref=e130]: Patient
+        - button "Administrator" [ref=e132]: Administrator
+    - generic [ref=e134]:
+      - generic [ref=e136]: Online
+      - button "Logout" [ref=e138]:
+        - img [ref=e139]
+        - text: Logout
+  - generic [ref=e141]:
+    - banner [ref=e142]:
+      - generic [ref=e143]:
+        - img [ref=e144]
+        - textbox "Search patient..." [ref=e146]
+      - button "Online" [ref=e147]:
+        - img [ref=e148]
+        - text: Online
+      - button "हि" [ref=e150]
+      - generic [ref=e151]:
+        - img [ref=e152]
+        - text: Encrypted
+    - main [ref=e154]:
+      - generic [ref=e155]:
+        - generic [ref=e157]:
+          - heading "Good morning, Meena" [level=1] [ref=e158]
+          - paragraph [ref=e159]: 31 Aug 2026 · Village Health Centre, Govindpur
+        - generic [ref=e160]:
+          - button "Register Patient" [ref=e161]:
+            - img [ref=e162]
+            - text: Register Patient
+          - button "New Assessment" [ref=e164]:
+            - img [ref=e165]
+            - text: New Assessment
+          - button "Search Patient" [ref=e167]:
+            - img [ref=e168]
+            - text: Search Patient
+          - button "Sync Center" [ref=e170]:
+            - img [ref=e171]
+            - text: Sync Center
+        - generic [ref=e173]:
+          - generic [ref=e174]:
+            - generic [ref=e175]:
+              - img [ref=e177]
+              - generic [ref=e179]: ↑
+            - generic [ref=e180]:
+              - generic [ref=e181]: "7"
+              - generic [ref=e182]: Today's Consultations
+              - generic [ref=e183]: 3 more scheduled
+          - generic [ref=e184]:
+            - generic [ref=e185]:
+              - img [ref=e187]
+              - generic [ref=e189]: ↑
+            - generic [ref=e190]:
+              - generic [ref=e191]: "156"
+              - generic [ref=e192]: Registered Patients
+              - generic [ref=e193]: Govindpur sector
+          - generic [ref=e194]:
+            - img [ref=e197]
+            - generic [ref=e199]:
+              - generic [ref=e200]: "12"
+              - generic [ref=e201]: Pending Follow-ups
+              - generic [ref=e202]: 4 overdue
+          - generic [ref=e203]:
+            - img [ref=e206]
+            - generic [ref=e208]:
+              - generic [ref=e209]: "2"
+              - generic [ref=e210]: High-risk Patients
+              - generic [ref=e211]: Need urgent review
+        - generic [ref=e212]:
+          - img [ref=e213]
+          - textbox "Search by name or Health ID (e.g. RHC-2026-...)" [ref=e215]
+        - generic [ref=e216]:
+          - generic [ref=e218]:
+            - generic [ref=e221]:
+              - heading "Recent Patients" [level=2] [ref=e222]
+              - paragraph [ref=e223]: Last visited
+            - generic [ref=e224]:
+              - 'button "PD Priya Devi MODERATE 28F · Govindpur · Last: 29 Aug 2026 RHC-2026-8F4K92" [ref=e225]':
+                - generic [ref=e226]: PD
+                - generic [ref=e227]:
+                  - generic [ref=e228]:
+                    - generic [ref=e229]: Priya Devi
+                    - generic [ref=e230]: MODERATE
+                  - generic [ref=e232]: "28F · Govindpur · Last: 29 Aug 2026"
+                  - generic [ref=e233]: RHC-2026-8F4K92
+                - img [ref=e234]
+              - 'button "RK Ramesh Kumar HIGH RISK 45M · Khetolai · Last: 31 Aug 2026 RHC-2026-3M9P71" [ref=e236]':
+                - generic [ref=e237]: RK
+                - generic [ref=e238]:
+                  - generic [ref=e239]:
+                    - generic [ref=e240]: Ramesh Kumar
+                    - generic [ref=e241]: HIGH RISK
+                  - generic [ref=e243]: "45M · Khetolai · Last: 31 Aug 2026"
+                  - generic [ref=e244]: RHC-2026-3M9P71
+                - img [ref=e245]
+              - 'button "SB Sunita Bai LOW RISK 52F · Lunkaransar · Last: 25 Aug 2026 RHC-2026-7X2N44" [ref=e247]':
+                - generic [ref=e248]: SB
+                - generic [ref=e249]:
+                  - generic [ref=e250]:
+                    - generic [ref=e251]: Sunita Bai
+                    - generic [ref=e252]: LOW RISK
+                  - generic [ref=e254]: "52F · Lunkaransar · Last: 25 Aug 2026"
+                  - generic [ref=e255]: RHC-2026-7X2N44
+                - img [ref=e256]
+              - 'button "ML Mohan Lal CRITICAL 67M · Deshnok · Last: 31 Aug 2026 RHC-2026-2K8Q15" [ref=e258]':
+                - generic [ref=e259]: ML
+                - generic [ref=e260]:
+                  - generic [ref=e261]:
+                    - generic [ref=e262]: Mohan Lal
+                    - generic [ref=e263]: CRITICAL
+                  - generic [ref=e265]: "67M · Deshnok · Last: 31 Aug 2026"
+                  - generic [ref=e266]: RHC-2026-2K8Q15
+                - img [ref=e267]
+            - button "View all patients →" [ref=e270]
+          - generic [ref=e271]:
+            - generic [ref=e272]:
+              - generic [ref=e275]:
+                - heading "High-risk Alerts" [level=2] [ref=e276]
+                - paragraph [ref=e277]: Require immediate attention
+              - generic [ref=e278]:
+                - button "RK Ramesh Kumar HIGH RISK" [ref=e279]:
+                  - generic [ref=e280]: RK
+                  - generic [ref=e281]:
+                    - generic [ref=e282]: Ramesh Kumar
+                    - generic [ref=e284]: HIGH RISK
+                - button "ML Mohan Lal CRITICAL" [ref=e286]:
+                  - generic [ref=e287]: ML
+                  - generic [ref=e288]:
+                    - generic [ref=e289]: Mohan Lal
+                    - generic [ref=e291]: CRITICAL
+            - generic [ref=e293]:
+              - heading "Pending Referrals" [level=2] [ref=e297]
+              - generic [ref=e298]:
+                - paragraph [ref=e299]: No pending referrals
+                - button "View all referrals →" [ref=e300]
+            - generic [ref=e301]:
+              - generic [ref=e302]:
+                - generic [ref=e303]: All synced ✓
+                - generic [ref=e304]: "Last sync: Today, 08:00 AM"
+              - button "Details" [ref=e305]
+        - generic [ref=e306]:
+          - generic [ref=e308]:
+            - generic [ref=e309]:
+              - heading "Today's Schedule" [level=2] [ref=e310]
+              - paragraph [ref=e311]: 31 Aug 2026
+            - button "+ New Assessment" [ref=e313]
+          - table [ref=e315]:
+            - rowgroup [ref=e316]:
+              - row "Time Patient Village Purpose Risk Status" [ref=e317]:
+                - columnheader "Time" [ref=e318]
+                - columnheader "Patient" [ref=e319]
+                - columnheader "Village" [ref=e320]
+                - columnheader "Purpose" [ref=e321]
+                - columnheader "Risk" [ref=e322]
+                - columnheader "Status" [ref=e323]
+            - rowgroup [ref=e324]:
+              - row "08:20 AM Mohan Lal Deshnok Emergency Assessment CRITICAL Referred" [ref=e325] [cursor=pointer]:
+                - cell "08:20 AM" [ref=e326]
+                - cell "Mohan Lal" [ref=e327]
+                - cell "Deshnok" [ref=e328]
+                - cell "Emergency Assessment" [ref=e329]
+                - cell "CRITICAL" [ref=e330]:
+                  - generic [ref=e331]: CRITICAL
+                - cell "Referred" [ref=e333]
+              - row "09:40 AM Ramesh Kumar Khetolai Chest pain evaluation CRITICAL Referred" [ref=e334] [cursor=pointer]:
+                - cell "09:40 AM" [ref=e335]
+                - cell "Ramesh Kumar" [ref=e336]
+                - cell "Khetolai" [ref=e337]
+                - cell "Chest pain evaluation" [ref=e338]
+                - cell "CRITICAL" [ref=e339]:
+                  - generic [ref=e340]: CRITICAL
+                - cell "Referred" [ref=e342]
+              - row "10:15 AM Priya Devi Govindpur Anaemia follow-up MODERATE Completed" [ref=e343] [cursor=pointer]:
+                - cell "10:15 AM" [ref=e344]
+                - cell "Priya Devi" [ref=e345]
+                - cell "Govindpur" [ref=e346]
+                - cell "Anaemia follow-up" [ref=e347]
+                - cell "MODERATE" [ref=e348]:
+                  - generic [ref=e349]: MODERATE
+                - cell "Completed" [ref=e351]
+              - row "11:30 AM Kavita Sharma Churi Ajitgarh Routine check-up LOW RISK Completed" [ref=e352] [cursor=pointer]:
+                - cell "11:30 AM" [ref=e353]
+                - cell "Kavita Sharma" [ref=e354]
+                - cell "Churi Ajitgarh" [ref=e355]
+                - cell "Routine check-up" [ref=e356]
+                - cell "LOW RISK" [ref=e357]:
+                  - generic [ref=e358]: LOW RISK
+                - cell "Completed" [ref=e360]
+              - row "02:00 PM Anita Meena Govindpur Vaccination LOW RISK Scheduled" [ref=e361] [cursor=pointer]:
+                - cell "02:00 PM" [ref=e362]
+                - cell "Anita Meena" [ref=e363]
+                - cell "Govindpur" [ref=e364]
+                - cell "Vaccination" [ref=e365]
+                - cell "LOW RISK" [ref=e366]:
+                  - generic [ref=e367]: LOW RISK
+                - cell "Scheduled" [ref=e369]

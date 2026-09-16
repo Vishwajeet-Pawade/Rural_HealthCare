@@ -1,0 +1,38 @@
+- generic [ref=e3]:
+  - img [ref=e5]
+  - generic [ref=e8]:
+    - button "हिन्दी" [ref=e10]:
+      - img [ref=e11]
+      - text: हिन्दी
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - img [ref=e18]
+          - generic [ref=e20]:
+            - generic [ref=e21]: RuralHealth
+            - generic [ref=e22]: ग्रामीण स्वास्थ्य प्रणाली
+        - paragraph [ref=e23]: Secure Digital Health Records · Offline-First · SIH-26133
+      - generic [ref=e69]:
+        - generic [ref=e70]:
+          - button "← Back" [ref=e71]
+          - heading "Enter OTP" [level=2] [ref=e72]
+          - paragraph [ref=e73]: Sent to +91 9414158392
+        - generic [ref=e74]:
+          - textbox [ref=e75]
+          - textbox [ref=e76]
+          - textbox [ref=e77]
+          - textbox [ref=e78]
+          - textbox [ref=e79]
+          - textbox [ref=e80]
+        - button "Verify & Login" [ref=e81]
+        - paragraph [ref=e82]:
+          - text: Didn't receive OTP?
+          - button "Resend" [ref=e83]
+      - generic [ref=e51]:
+        - generic [ref=e52]:
+          - img [ref=e53]
+          - text: End-to-end encrypted · AES-256
+        - generic [ref=e55]: Offline-capable
+    - button "Accessibility Options" [ref=e58]:
+      - img [ref=e59]
+      - text: Accessibility Options
