@@ -1,3 +1,13 @@
+# ==============================================================================
+# NOTE: DOCKER COMPOSE IS OPTIONAL / INACTIVE IN CURRENT SETUP
+# ==============================================================================
+# This project is configured to run PostgreSQL natively on Windows at:
+#   localhost:5432 (database: ruralcare, user: postgres)
+#
+# Running this docker-compose file is NOT required for local development.
+# It is preserved here for reference or for containerized CI/CD environments.
+# ==============================================================================
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -20,4 +30,3 @@ services:
 volumes:
   ruralcare_pgdata:
     driver: local
-
