@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon, HealthIDCard, ConsentBadge, RiskBadge, Card, PermissionBadge, RecordOwnershipBanner } from '../components/shared';
 
-interface Props { navigate: (s: string) => void; onSOS: () => void; }
+interface Props { navigate: (s: string) => void; onSOS: () => void; loginPhone?: string; }
 
 const QR_GRID = Array.from({ length: 7 }, (_, row) =>
   Array.from({ length: 7 }, (_, col) => {
@@ -53,10 +53,54 @@ const LAB_REPORTS = [
   { date: '14 May 2026', name: 'Thyroid Function Test (TFT)', by: 'CHC Bikaner Lab', result: 'TSH: 8.2 mIU/L · T3: Low · T4: Low', status: 'abnormal' },
 ];
 
-export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
+export default function PatientMobileDashboard({ navigate, onSOS, loginPhone }: Props) {
   const [sosConfirm, setSosConfirm] = useState(false);
   const [sosSent, setSosSent] = useState(false);
   const [expandedConsultation, setExpandedConsultation] = useState<string | null>(null);
+  const [dbUser, setDbUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    import('../imports/api').then(({ auth, getToken }) => {
+      auth.getCurrentUser(getToken() || undefined).then((res: any) => {
+        if (res.data?.user) setDbUser(res.data.user);
+      }).catch((e: any) => console.error('Failed to load user', e))
+        .finally(() => setLoading(false));
+    });
+  }, []);
+
+  const pt = dbUser?.patientProfile;
+  // If the user registered but doesn't have a linked patient profile yet
+  const patientName = pt?.name || dbUser?.fullName || 'Loading...';
+  const patientVillage = pt?.village || 'Unknown';
+  const patientDistrict = pt?.district || 'Unknown';
+  const patientHealthId = pt?.healthId || (dbUser ? `RHC-${dbUser.id.substring(0,6).toUpperCase()}` : 'NEW');
+  const patientAge = pt?.age || '--';
+  const patientGender = pt?.gender || 'U';
+  const patientBloodGroup = pt?.bloodGroup || '--';
+  const patientRisk = pt?.riskLevel ? (typeof pt.riskLevel === 'string' ? pt.riskLevel.toLowerCase() : pt.riskLevel) : 'low';
+  const patientInitials = patientName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+  const patientAllergies = pt?.allergies || [];
+  const patientConditions = pt?.chronicConditions || [];
+  const patientMeds = pt?.currentMedications || [];
+  const assessments = pt?.assessments || [];
+
+  // Fallback to mock data ONLY if dbUser wasn't fetched at all (dev preview without login)
+  const isMock = !dbUser;
+  const historyToRender = isMock ? FULL_HISTORY : (assessments.length > 0 ? assessments : []);
+  const labsToRender = isMock ? LAB_REPORTS : [];
+
+  if (loading) {
+    return (
+      <div className="p-4 max-w-md mx-auto flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mx-auto mb-3" />
+          <div className="text-sm text-gray-500">Loading your health records…</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
@@ -96,14 +140,14 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between pt-2">
         <div>
-          <h1 className="font-display text-xl font-bold text-gray-900">Priya Devi</h1>
-          <p className="text-xs text-gray-500">Patient · Govindpur, Bikaner</p>
+          <h1 className="font-display text-xl font-bold text-gray-900">{patientName}</h1>
+          <p className="text-xs text-gray-500">Patient · {patientVillage}, {patientDistrict}</p>
         </div>
         <div className="flex items-center gap-2">
           <button className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
             <Icon name="bell" size={18} className="text-gray-600" />
           </button>
-          <div className="w-9 h-9 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm">PD</div>
+          <div className="w-9 h-9 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm">{patientInitials}</div>
           {/* SOS */}
           <button onClick={() => setSosConfirm(true)}
             className="relative flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-md shadow-red-200 transition-all">
@@ -118,8 +162,8 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="text-brand-200 text-xs font-medium mb-1">My Health ID</div>
-            <div className="font-mono text-lg font-bold tracking-wider">RHC-2026-8F4K92</div>
-            <div className="text-brand-200 text-xs mt-1">Priya Devi · 28F · O+</div>
+            <div className="font-mono text-lg font-bold tracking-wider">{patientHealthId}</div>
+            <div className="text-brand-200 text-xs mt-1">{patientName} · {patientAge}{patientGender} · {patientBloodGroup}</div>
           </div>
           {/* Mini QR placeholder */}
           <div className="w-16 h-16 bg-white rounded-xl p-1.5 shrink-0">
@@ -131,7 +175,7 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <RiskBadge level="moderate" />
+          <RiskBadge level={patientRisk} />
           <ConsentBadge status="granted" />
         </div>
         <div className="flex gap-2 mt-4">
@@ -169,25 +213,27 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
         ))}
       </div>
 
-      {/* Upcoming follow-up */}
-      <div className="bg-brand-50 border border-brand-100 rounded-2xl p-4 flex items-start gap-3">
-        <div className="w-10 h-10 bg-brand-100 rounded-xl flex items-center justify-center shrink-0">
-          <Icon name="history" size={18} className="text-brand-600" />
+      {/* Upcoming follow-up (mocked only if we have mock data, else dynamic if you want, but hiding for now if new patient) */}
+      {isMock && (
+        <div className="bg-brand-50 border border-brand-100 rounded-2xl p-4 flex items-start gap-3">
+          <div className="w-10 h-10 bg-brand-100 rounded-xl flex items-center justify-center shrink-0">
+            <Icon name="history" size={18} className="text-brand-600" />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-brand-700">Upcoming Follow-up</div>
+            <div className="font-display font-bold text-gray-900 mt-0.5">28 September 2026</div>
+            <div className="text-xs text-gray-500">PHC Lunkaransar · Dr. Ankit Sharma</div>
+            <div className="text-xs text-brand-600 mt-1">Haematology review + iron response check</div>
+          </div>
         </div>
-        <div>
-          <div className="text-xs font-semibold text-brand-700">Upcoming Follow-up</div>
-          <div className="font-display font-bold text-gray-900 mt-0.5">28 September 2026</div>
-          <div className="text-xs text-gray-500">PHC Lunkaransar · Dr. Ankit Sharma</div>
-          <div className="text-xs text-brand-600 mt-1">Haematology review + iron response check</div>
-        </div>
-      </div>
+      )}
 
       {/* My Health Record — full longitudinal history */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-display text-base font-bold text-gray-900">My Health Record</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{FULL_HISTORY.length} consultations · longitudinal history</p>
+            <p className="text-xs text-gray-500 mt-0.5">{historyToRender.length} consultations · longitudinal history</p>
           </div>
           <PermissionBadge type="view-only" />
         </div>
@@ -195,7 +241,13 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
         <RecordOwnershipBanner />
 
         {/* Consultation timeline — expandable cards */}
-        {FULL_HISTORY.map((entry) => {
+        {historyToRender.length === 0 ? (
+          <div className="text-center py-6 bg-gray-50 rounded-2xl border border-gray-100">
+             <Icon name="clipboard" size={24} className="text-gray-300 mx-auto mb-2" />
+             <p className="text-gray-500 text-sm">No health records found.</p>
+             <p className="text-gray-400 text-xs">Visits to the PHC or ASHA will appear here.</p>
+          </div>
+        ) : historyToRender.map((entry: any) => {
           const isExpanded = expandedConsultation === entry.id;
           return (
             <Card key={entry.id} className="overflow-hidden">
@@ -233,7 +285,7 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
                       <PermissionBadge type="asha-recorded" />
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {entry.symptoms.map(s => (
+                      {entry.symptoms.map((s: string) => (
                         <span key={s} className="px-2 py-0.5 bg-amber-50 border border-amber-100 text-amber-800 rounded-lg text-xs">{s}</span>
                       ))}
                     </div>
@@ -248,7 +300,7 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
                     <div className="grid grid-cols-3 gap-2">
                       {Object.entries(entry.vitals).map(([k, v]) => (
                         <div key={k} className="bg-gray-50 rounded-lg px-2 py-1.5 text-center">
-                          <div className="font-mono text-xs font-bold text-gray-800">{v}</div>
+                          <div className="font-mono text-xs font-bold text-gray-800">{String(v)}</div>
                           <div className="text-[9px] text-gray-400 capitalize">{k === 'bp' ? 'Blood Pressure' : k === 'hr' ? 'Heart Rate' : k === 'temp' ? 'Temp' : k === 'spo2' ? 'SpO₂' : 'Weight'}</div>
                         </div>
                       ))}
@@ -272,7 +324,7 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
                       <PermissionBadge type="doctor-editable" />
                     </div>
                     <ul className="space-y-1">
-                      {entry.prescription.map(rx => (
+                      {entry.prescription.map((rx: string) => (
                         <li key={rx} className="flex items-start gap-2 text-xs text-gray-700">
                           <Icon name="pill" size={11} className="text-blue-500 shrink-0 mt-0.5" />
                           {rx}
@@ -305,7 +357,9 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
             </div>
           </div>
           <div className="divide-y divide-gray-50">
-            {LAB_REPORTS.map((r, i) => (
+            {labsToRender.length === 0 ? (
+               <div className="p-4 text-center text-gray-500 text-xs">No lab reports available.</div>
+            ) : labsToRender.map((r: any, i: number) => (
               <div key={i} className="px-4 py-3 flex items-start gap-3">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${r.status === 'abnormal' ? 'bg-red-50' : 'bg-green-50'}`}>
                   <Icon name="document" size={14} className={r.status === 'abnormal' ? 'text-red-500' : 'text-green-600'} />
@@ -339,39 +393,44 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
         <div className="p-4">
           <div className="font-display font-semibold text-gray-800 mb-3">My Medicines</div>
           <div className="space-y-2">
-            {[
+            {(isMock ? [
               { name: 'Thyronorm 25 mcg', dosage: 'Once daily – morning (empty stomach)' },
               { name: 'Ferrous Sulphate 200 mg', dosage: 'Three times daily – after meals' },
               { name: 'Folic Acid 5 mg', dosage: 'Once daily – after meals' },
-            ].map((m, i) => (
+            ] : patientMeds).map((m: any, i: number) => (
               <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-xl border border-gray-100">
                 <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
                   <Icon name="pill" size={14} className="text-blue-600" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-gray-900">{m.name}</div>
-                  <div className="text-[10px] text-gray-500">{m.dosage}</div>
+                  <div className="text-sm font-medium text-gray-900">{typeof m === 'string' ? m : m.name}</div>
+                  <div className="text-[10px] text-gray-500">{typeof m === 'string' ? '' : (m.dosage || m.dose || '')}</div>
                 </div>
               </div>
             ))}
+            {!isMock && patientMeds.length === 0 && (
+              <div className="text-xs text-gray-400 text-center py-2">No medicines on record.</div>
+            )}
           </div>
         </div>
       </Card>
 
       {/* Referral status */}
-      <Card>
-        <div className="p-4">
-          <div className="font-display font-semibold text-gray-800 mb-3">Referral Status</div>
-          <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-100 rounded-xl">
-            <Icon name="check" size={16} className="text-green-600 shrink-0 mt-0.5" />
-            <div>
-              <div className="text-sm font-medium text-gray-900">PHC Lunkaransar – Completed</div>
-              <div className="text-xs text-gray-500">Anaemia evaluation · 29 Aug 2026</div>
-              <div className="text-xs text-green-700 mt-0.5">Follow-up scheduled: 28 Sep 2026</div>
+      {(isMock) && (
+        <Card>
+          <div className="p-4">
+            <div className="font-display font-semibold text-gray-800 mb-3">Referral Status</div>
+            <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-100 rounded-xl">
+              <Icon name="check" size={16} className="text-green-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="text-sm font-medium text-gray-900">PHC Lunkaransar – Completed</div>
+                <div className="text-xs text-gray-500">Anaemia evaluation · 29 Aug 2026</div>
+                <div className="text-xs text-green-700 mt-0.5">Follow-up scheduled: 28 Sep 2026</div>
+              </div>
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Privacy summary */}
       <button onClick={() => navigate('consent')}
@@ -386,31 +445,35 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
         <Icon name="chevron_right" size={16} className="text-gray-400" />
       </button>
 
-      {/* Emergency access notification */}
-      <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
-        <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center shrink-0">
-          <Icon name="alert" size={18} className="text-red-600" />
+      {/* Emergency access notification — only shown for mock/demo or when real data exists */}
+      {isMock && (
+        <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
+          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center shrink-0">
+            <Icon name="alert" size={18} className="text-red-600" />
+          </div>
+          <div className="flex-1">
+            <div className="text-sm font-bold text-red-800">Emergency Access Used</div>
+            <div className="text-xs text-red-700 mt-0.5">Dr. Ankit Sharma accessed your emergency medical summary on 31 Aug 2026 at 14:32 — Reason: Patient unconscious</div>
+            <button onClick={() => navigate('access-history')} className="text-xs text-red-600 font-semibold mt-1.5 hover:underline">View in Access History →</button>
+          </div>
         </div>
-        <div className="flex-1">
-          <div className="text-sm font-bold text-red-800">Emergency Access Used</div>
-          <div className="text-xs text-red-700 mt-0.5">Dr. Ankit Sharma accessed your emergency medical summary on 31 Aug 2026 at 14:32 — Reason: Patient unconscious</div>
-          <button onClick={() => navigate('access-history')} className="text-xs text-red-600 font-semibold mt-1.5 hover:underline">View in Access History →</button>
-        </div>
-      </div>
+      )}
 
-      {/* Access request alert */}
-      <button onClick={() => navigate('access-request')}
-        className="w-full flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl hover:bg-amber-100 transition-colors text-left">
-        <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
-          <Icon name="bell" size={18} className="text-amber-700" />
-          <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />
-        </div>
-        <div className="flex-1">
-          <div className="text-sm font-semibold text-amber-900">New Access Request</div>
-          <div className="text-xs text-amber-700">Dr. Ankit Sharma is requesting access</div>
-        </div>
-        <Icon name="chevron_right" size={16} className="text-amber-500" />
-      </button>
+      {/* Access request alert — only shown for mock/demo */}
+      {isMock && (
+        <button onClick={() => navigate('access-request')}
+          className="w-full flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl hover:bg-amber-100 transition-colors text-left">
+          <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
+            <Icon name="bell" size={18} className="text-amber-700" />
+            <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />
+          </div>
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-amber-900">New Access Request</div>
+            <div className="text-xs text-amber-700">Dr. Ankit Sharma is requesting access</div>
+          </div>
+          <Icon name="chevron_right" size={16} className="text-amber-500" />
+        </button>
+      )}
     </div>
   );
 }

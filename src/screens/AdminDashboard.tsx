@@ -1,16 +1,29 @@
+import { useState, useEffect } from 'react';
 import { ADMIN_STATS, DISEASE_TRENDS, PHC_ACTIVITY } from '../data';
 import { StatCard, Card, Icon, SectionHeader } from '../components/shared';
 
 interface Props { navigate: (s: string) => void; isOffline: boolean; }
 
 export default function AdminDashboard({ navigate, isOffline }: Props) {
+  const [dbUser, setDbUser] = useState<any>(null);
+  
+  useEffect(() => {
+    import('../imports/api').then(({ auth, getToken }) => {
+      auth.getCurrentUser(getToken() || undefined).then((res: any) => {
+        if(res.data?.user) setDbUser(res.data.user);
+      }).catch((e: any) => console.error("Failed to load admin user", e));
+    });
+  }, []);
+
+  const adminName = dbUser?.fullName || 'Rajiv Singh';
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Rajiv Singh · District Health Officer, Bikaner · 31 Aug 2026</p>
+          <p className="text-sm text-gray-500 mt-0.5">{adminName} · District Health Officer, Bikaner · 31 Aug 2026</p>
         </div>
         <div className="flex items-center gap-2">
           <div className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${isOffline ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-green-50 border-green-100 text-green-700'}`}>

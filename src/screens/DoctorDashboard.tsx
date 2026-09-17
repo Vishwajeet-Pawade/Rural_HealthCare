@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PATIENTS, REFERRALS } from '../data';
 import { StatCard, RiskBadge, PriorityBadge, ReferralBadge, PatientRow, Card, SectionHeader, Icon, HPRBadge, HFRBadge, DutyStatusBadge, ABDMLayerLegend } from '../components/shared';
 
@@ -28,9 +28,41 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
   const [search, setSearch] = useState('');
   const [myStatus, setMyStatus] = useState<DutyStatus>('available');
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
+  const [realReferrals, setRealReferrals] = useState<any[]>([]);
+  const [dbUser, setDbUser] = useState<any>(null);
 
-  const pendingReferrals = REFERRALS.filter(r => r.status === 'pending' || r.status === 'accepted');
-  const criticalPatients = PATIENTS.filter(p => p.riskLevel === 'critical' || p.riskLevel === 'high');
+  useEffect(() => {
+    import('../imports/api').then(({ referrals, auth, getToken }) => {
+      const token = getToken() || undefined;
+      referrals.get(token).then(res => {
+        if(res.data?.referrals?.length > 0) {
+          const mapped = res.data.referrals.map((r: any) => ({
+            ...r,
+            status: r.status.toLowerCase(),
+            priority: r.priority.toLowerCase(),
+            riskLevel: r.riskLevel.toLowerCase(),
+          }));
+          setRealReferrals(mapped);
+        }
+      }).catch(e => console.error("Failed to load referrals", e));
+
+      auth.getCurrentUser(token).then((res: any) => {
+        if (res.data?.user) setDbUser(res.data.user);
+      }).catch((e: any) => console.error("Failed to load user", e));
+    });
+  }, []);
+
+  const baseReferrals = realReferrals.length > 0 ? realReferrals : [];
+  const pendingReferrals = baseReferrals.filter((r: any) => r.status === 'pending' || r.status === 'accepted');
+  const isMock = !dbUser;
+
+  // Use mock only if not logged in (dev preview)
+  const mockReferrals = isMock ? REFERRALS.filter((r: any) => r.status === 'pending' || r.status === 'accepted') : [];
+  const displayReferrals = isMock ? mockReferrals : pendingReferrals;
+
+  const criticalPatients = isMock ? PATIENTS.filter((p: any) => p.riskLevel === 'critical' || p.riskLevel === 'high') : [];
+
+  const doctorName = dbUser?.fullName || 'Dr. Ankit Sharma';
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -38,8 +70,8 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <h1 className="font-display text-2xl font-bold text-gray-900">Dr. Ankit Sharma</h1>
-            <HPRBadge id="HPR-2024-00142" />
+            <h1 className="font-display text-2xl font-bold text-gray-900">{doctorName}</h1>
+            <HPRBadge id={dbUser?.doctorProfile?.healthId || "HPR-PENDING"} />
             {/* Clickable availability status */}
             <div className="relative">
               <button
@@ -76,8 +108,8 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm text-gray-500">PHC Lunkaransar · MD General Medicine · 31 Aug 2026</p>
-            <HFRBadge id="HFR-2024-00891" compact />
+            <p className="text-sm text-gray-500">{dbUser?.doctorProfile?.facility || 'PHC / Hospital'} · {dbUser?.doctorProfile?.specialty || 'General Medicine'} · {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+            <HFRBadge id={dbUser?.doctorProfile?.hfrId || "HFR-PENDING"} compact />
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -120,7 +152,6 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
 
               {/* SOS workflow body */}
               <div className="bg-white border-x border-b border-red-100 rounded-b-2xl px-4 py-3 space-y-3">
-                {/* Status notice */}
                 <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl">
                   <Icon name="info" size={13} className="text-amber-600 shrink-0 mt-0.5" />
                   <p className="text-[10px] text-amber-800">
@@ -153,7 +184,7 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
                       onClick={() => onDeclineSOS?.(sos.id)}
                       className="flex-1 py-2.5 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-700 border border-gray-200 hover:border-red-200 font-semibold rounded-xl text-xs transition-colors flex items-center justify-center gap-2">
                       <Icon name="x" size={14} />
-                      DECLINE / UNAVAILABLE
+                      Decline
                     </button>
                   </div>
                 )}
@@ -165,10 +196,10 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="New Referrals" value={pendingReferrals.length} sub="Awaiting review" icon="share" color="amber" />
-        <StatCard label="Today's Patients" value="14" sub="6 completed" icon="users" color="brand" />
+        <StatCard label="New Referrals" value={displayReferrals.length} sub="Awaiting review" icon="share" color="amber" />
+        <StatCard label="Today's Patients" value={isMock ? "14" : "0"} sub={isMock ? "6 completed" : "Start by adding assessment"} icon="users" color="brand" />
         <StatCard label="High-risk Cases" value={criticalPatients.length} sub="Under monitoring" icon="alert" color="red" />
-        <StatCard label="Pending Follow-ups" value="8" sub="3 overdue" icon="history" color="purple" />
+        <StatCard label="Pending Follow-ups" value={isMock ? "8" : "0"} sub={isMock ? "3 overdue" : "No follow-ups yet"} icon="history" color="purple" />
       </div>
 
       {/* Patient search */}
@@ -189,7 +220,9 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
               } />
             </div>
             <div className="divide-y divide-gray-50">
-              {pendingReferrals.map(r => (
+              {displayReferrals.length === 0 ? (
+                <div className="p-6 text-center text-gray-400 text-sm">No pending referrals.</div>
+              ) : displayReferrals.map((r: any) => (
                 <button key={r.id} onClick={() => navigate('doctor-patient-view')}
                   className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left group">
                   <div className={`w-2 h-12 rounded-full shrink-0 ${r.priority === 'emergency' ? 'bg-red-500' : r.priority === 'urgent' ? 'bg-amber-500' : 'bg-gray-300'}`} />
@@ -214,40 +247,45 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
           {/* Today's schedule */}
           <Card>
             <div className="px-4 pt-4">
-              <SectionHeader title="Today's Consultations" sub="31 Aug 2026" />
+              <SectionHeader title="Today's Consultations" sub={new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} />
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    {['Time', 'Patient', 'Age/Gender', 'Purpose', 'Risk', 'Status'].map(h => (
-                      <th key={h} className="px-4 py-2 text-left text-xs font-medium text-gray-500">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {[
-                    { time: '09:00', name: 'Mohan Lal', ag: '67M', purpose: 'Emergency – COPD', risk: 'critical' as const, status: 'In Progress' },
-                    { time: '09:40', name: 'Ramesh Kumar', ag: '45M', purpose: 'Chest pain eval.', risk: 'critical' as const, status: 'Waiting' },
-                    { time: '10:30', name: 'Priya Devi', ag: '28F', purpose: 'Anaemia review', risk: 'moderate' as const, status: 'Completed' },
-                    { time: '11:15', name: 'Kavita Sharma', ag: '34F', purpose: 'Follow-up', risk: 'low' as const, status: 'Completed' },
-                    { time: '02:00', name: 'Sunita Bai', ag: '52F', purpose: 'Thyroid check', risk: 'low' as const, status: 'Scheduled' },
-                  ].map((row, i) => (
-                    <tr key={i} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate('doctor-patient-view')}>
-                      <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{row.time}</td>
-                      <td className="px-4 py-2.5 font-medium text-sm text-gray-900">{row.name}</td>
-                      <td className="px-4 py-2.5 text-xs text-gray-500">{row.ag}</td>
-                      <td className="px-4 py-2.5 text-xs text-gray-600">{row.purpose}</td>
-                      <td className="px-4 py-2.5"><RiskBadge level={row.risk} size="sm" /></td>
-                      <td className="px-4 py-2.5">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${row.status === 'Completed' ? 'bg-green-50 text-green-700' : row.status === 'In Progress' ? 'bg-blue-50 text-blue-700' : row.status === 'Waiting' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-                          {row.status}
-                        </span>
-                      </td>
+              {isMock ? (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      {['Time', 'Patient', 'Age/Gender', 'Purpose', 'Risk', 'Status'].map(h => (
+                        <th key={h} className="px-4 py-2 text-left text-xs font-medium text-gray-500">{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {[
+                      { time: '09:00', name: 'Mohan Lal', ag: '67M', purpose: 'Emergency – COPD', risk: 'critical' as const, status: 'In Progress' },
+                      { time: '09:40', name: 'Ramesh Kumar', ag: '45M', purpose: 'Chest pain eval.', risk: 'critical' as const, status: 'Waiting' },
+                      { time: '10:30', name: 'Priya Devi', ag: '28F', purpose: 'Anaemia review', risk: 'moderate' as const, status: 'Completed' },
+                    ].map((row, i) => (
+                      <tr key={i} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate('doctor-patient-view')}>
+                        <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{row.time}</td>
+                        <td className="px-4 py-2.5 font-medium text-sm text-gray-900">{row.name}</td>
+                        <td className="px-4 py-2.5 text-xs text-gray-500">{row.ag}</td>
+                        <td className="px-4 py-2.5 text-xs text-gray-600">{row.purpose}</td>
+                        <td className="px-4 py-2.5"><RiskBadge level={row.risk} size="sm" /></td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${row.status === 'Completed' ? 'bg-green-50 text-green-700' : row.status === 'In Progress' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                            {row.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="p-6 text-center text-gray-400 text-sm">
+                  <Icon name="clipboard" size={24} className="mx-auto mb-2 text-gray-300" />
+                  No consultations recorded yet. Use <strong>New Assessment</strong> to start.
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -259,12 +297,14 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
               <SectionHeader title="Critical Patients" />
             </div>
             <div className="px-4 pb-4 space-y-3">
-              {criticalPatients.map(p => (
+              {criticalPatients.length === 0 ? (
+                <div className="text-xs text-gray-400 text-center py-3">No critical patients assigned.</div>
+              ) : criticalPatients.map((p: any) => (
                 <button key={p.id} onClick={() => navigate('doctor-patient-view')}
                   className="w-full text-left flex items-center gap-3 p-3 bg-red-50 rounded-xl hover:bg-red-100 transition-colors">
                   <div className="relative">
                     <div className="w-9 h-9 rounded-full bg-red-200 text-red-800 flex items-center justify-center font-bold text-xs">
-                      {p.name.split(' ').map(w => w[0]).join('').slice(0,2)}
+                      {p.name.split(' ').map((w: string) => w[0]).join('').slice(0,2)}
                     </div>
                     <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
                   </div>
@@ -290,41 +330,13 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
             </div>
           </Card>
 
-          {/* Facility On-Duty Roster — self entry reflects live status */}
-          <Card className="p-4">
-            <SectionHeader title="On-Duty Today" sub="PHC Lunkaransar" />
-            <div className="space-y-2">
-              {[
-                { name: 'Dr. Ankit Sharma', specialty: 'General Medicine', hprId: 'HPR-2024-00142', status: myStatus, self: true },
-                { name: 'Dr. Priya Mehta', specialty: 'Gynaecology', hprId: 'HPR-2024-00289', status: 'busy' as DutyStatus, self: false },
-                { name: 'Dr. Suresh Gupta', specialty: 'Emergency Medicine', hprId: 'HPR-2024-00371', status: 'available' as DutyStatus, self: false },
-              ].map((doc, i) => (
-                <div key={i} className={`flex items-center gap-2.5 p-2.5 rounded-xl ${doc.self ? 'bg-purple-50 border border-purple-100' : 'bg-gray-50'}`}>
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${doc.status === 'available' ? 'bg-green-100 text-green-800' : doc.status === 'busy' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-500'}`}>
-                    {doc.name.replace('Dr. ', '').split(' ').map(w => w[0]).join('').slice(0, 2)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-semibold text-gray-900 truncate">{doc.name}</span>
-                      {doc.self && <span className="text-[9px] bg-purple-200 text-purple-800 px-1.5 rounded font-bold">YOU</span>}
-                    </div>
-                    <div className="text-[10px] text-gray-500">{doc.specialty}</div>
-                    <HPRBadge compact />
-                  </div>
-                  <DutyStatusBadge status={doc.status} />
-                </div>
-              ))}
-            </div>
-          </Card>
-
           {/* Follow-ups */}
           <Card className="p-4">
             <SectionHeader title="Follow-ups Due" />
             <div className="space-y-2">
-              {[
+              {isMock ? [
                 { name: 'Priya Devi', date: '28 Sep 2026', type: 'Haematology review' },
                 { name: 'Ramesh Kumar', date: '14 Sep 2026', type: 'Cardiac follow-up' },
-                { name: 'Sunita Bai', date: '25 Sep 2026', type: 'Thyroid check' },
               ].map((f, i) => (
                 <div key={i} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => navigate('doctor-patient-view')}>
                   <div className="w-1.5 h-1.5 rounded-full bg-brand-500 mt-1.5 shrink-0" />
@@ -333,7 +345,9 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
                     <div className="text-[10px] text-gray-500">{f.date} · {f.type}</div>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <div className="text-xs text-gray-400 text-center py-3">No follow-ups scheduled yet.</div>
+              )}
             </div>
           </Card>
         </div>

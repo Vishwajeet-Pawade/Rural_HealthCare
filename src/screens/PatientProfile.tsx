@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PATIENTS, CONSULTATIONS, REFERRALS, AUDIT_LOG, CONSENT_ENTRIES } from '../data';
 import { RiskBadge, ConsentBadge, HealthIDCard, Tabs, TimelineEntry, Card, Icon, SectionHeader, PermissionBadge } from '../components/shared';
 
-interface Props { navigate: (s: string) => void; }
+interface Props { navigate: (s: string) => void; patientId?: string | null; }
 
 const PROFILE_TABS = [
   { id: 'overview', label: 'Overview' },
@@ -15,13 +15,66 @@ const PROFILE_TABS = [
   { id: 'access', label: 'Access History' },
 ];
 
-export default function PatientProfile({ navigate }: Props) {
+export default function PatientProfile({ navigate, patientId }: Props) {
   const [activeTab, setActiveTab] = useState('overview');
-  const patient = PATIENTS[0]; // Priya Devi
-  const consultations = CONSULTATIONS.filter(c => c.patientId === patient.id);
-  const referrals = REFERRALS.filter(r => r.patientId === patient.id);
+  const [dbPatient, setDbPatient] = useState<any>(null);
+  const [dbUser, setDbUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const initials = patient.name.split(' ').map(w => w[0]).join('').toUpperCase();
+  useEffect(() => {
+    import('../imports/api').then(({ patients, auth, getToken }) => {
+      const token = getToken() || undefined;
+      
+      if (patientId) {
+        patients.getById(patientId, token).then((res: any) => {
+          if (res.data?.patient) setDbPatient(res.data.patient);
+        }).catch((e: any) => console.error('Failed to load patient', e))
+          .finally(() => setLoading(false));
+      } else {
+        auth.getCurrentUser(token).then((res: any) => {
+          if (res.data?.user) {
+            setDbUser(res.data.user);
+            if (res.data.user.patientProfile) setDbPatient(res.data.user.patientProfile);
+          }
+        }).catch((e: any) => console.error('Failed to load user', e))
+          .finally(() => setLoading(false));
+      }
+    });
+  }, [patientId]);
+
+  const isMock = !dbPatient && !dbUser;
+  
+  // Construct a fallback patient object for newly registered users without a full patient profile yet
+  const patient: any = dbPatient || (dbUser ? {
+    id: dbUser.id,
+    healthId: `RHC-${dbUser.id}`,
+    name: dbUser.fullName,
+    age: '--',
+    gender: 'Unknown',
+    bloodGroup: '--',
+    village: 'N/A',
+    riskLevel: 'low',
+    allergies: [],
+    chronicConditions: [],
+    currentMedications: []
+  } : PATIENTS[0]);
+
+  const consultations = isMock ? CONSULTATIONS.filter((c: any) => c.patientId === patient.id || c.patientId === patient.healthId) : [];
+  const referrals = isMock ? REFERRALS.filter((r: any) => r.patientId === patient.id || r.patientId === patient.healthId) : [];
+
+  const nameStr = patient.name || 'Unknown';
+  const initials = nameStr.split(' ').map((w: string) => w[0] || '').join('').toUpperCase();
+
+  if (loading) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mx-auto mb-3" />
+          <div className="text-sm text-gray-500">Loading patient data…</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-5">
@@ -55,17 +108,17 @@ export default function PatientProfile({ navigate }: Props) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="font-display text-xl font-bold">{patient.name}</h1>
-                <span className="text-brand-200 text-sm">· {patient.nameHi}</span>
+                {patient.nameHi && <span className="text-brand-200 text-sm">· {patient.nameHi}</span>}
               </div>
               <div className="flex items-center gap-4 mt-1 text-brand-100 text-sm flex-wrap">
-                <span>{patient.age} yrs · {patient.gender === 'F' ? 'Female' : 'Male'}</span>
-                <span>Blood: <strong className="text-white">{patient.bloodGroup}</strong></span>
-                <span className="font-mono text-xs bg-white/10 px-2 py-0.5 rounded">{patient.id}</span>
+                <span>{patient.age} yrs · {patient.gender === 'F' || patient.gender === 'Female' ? 'Female' : 'Male'}</span>
+                <span>Blood: <strong className="text-white">{patient.bloodGroup || 'N/A'}</strong></span>
+                <span className="font-mono text-xs bg-white/10 px-2 py-0.5 rounded">{patient.healthId || patient.id}</span>
               </div>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <RiskBadge level={patient.riskLevel} />
-                <ConsentBadge status={patient.consentStatus} />
-                <span className="px-2.5 py-1 bg-white/10 text-white text-xs rounded-full">{patient.vaccinationStatus}</span>
+                <RiskBadge level={patient.riskLevel ? (typeof patient.riskLevel === 'string' ? patient.riskLevel.toLowerCase() : patient.riskLevel) : 'low'} />
+                {patient.consentStatus && <ConsentBadge status={patient.consentStatus} />}
+                {patient.vaccinationStatus && <span className="px-2.5 py-1 bg-white/10 text-white text-xs rounded-full">{patient.vaccinationStatus}</span>}
               </div>
             </div>
             <button onClick={() => navigate('health-assessment')}
@@ -77,11 +130,11 @@ export default function PatientProfile({ navigate }: Props) {
 
         {/* Quick info bar */}
         <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 flex flex-wrap gap-x-8 gap-y-1 text-xs text-gray-600">
-          <span className="flex items-center gap-1"><Icon name="map_pin" size={11} className="text-gray-400" />{patient.village}, {patient.district}</span>
+          <span className="flex items-center gap-1"><Icon name="map_pin" size={11} className="text-gray-400" />{patient.village}{patient.district ? `, ${patient.district}` : ''}</span>
           <span className="flex items-center gap-1"><Icon name="phone" size={11} className="text-gray-400" />{patient.phone}</span>
-          <span>Emergency: <strong>{patient.emergencyContact.name}</strong> ({patient.emergencyContact.relation}) {patient.emergencyContact.phone}</span>
-          <span>Health Worker: <strong>{patient.healthWorker}</strong></span>
-          <span>Registered: {patient.registeredAt}</span>
+          {patient.emergencyContact?.name && <span>Emergency: <strong>{patient.emergencyContact.name}</strong> ({patient.emergencyContact.relation}) {patient.emergencyContact.phone}</span>}
+          {patient.healthWorker && <span>Health Worker: <strong>{patient.healthWorker}</strong></span>}
+          <span>Registered: {patient.registeredAt || patient.createdAt?.slice(0, 10) || 'N/A'}</span>
         </div>
       </Card>
 
@@ -95,7 +148,7 @@ export default function PatientProfile({ navigate }: Props) {
             {/* Health ID */}
             <Card className="p-5">
               <SectionHeader title="Patient Health ID" />
-              <HealthIDCard id={patient.id} name={patient.name} size="lg" />
+              <HealthIDCard id={patient.healthId || patient.id} name={patient.name} size="lg" />
               <div className="flex gap-2 mt-4">
                 {['Copy', 'QR Code', 'Share', 'Print'].map(a => (
                   <button key={a} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-600 transition-colors">
@@ -109,27 +162,31 @@ export default function PatientProfile({ navigate }: Props) {
             <Card className="p-5">
               <SectionHeader title="Alerts & Conditions" />
               <div className="space-y-3">
-                {patient.allergies.length > 0 && (
+                {patient.allergies?.length > 0 ? (
                   <div>
                     <div className="text-xs font-semibold text-red-600 mb-2 flex items-center gap-1">
                       <Icon name="alert" size={12} /> ALLERGIES
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {patient.allergies.map(a => (
+                      {patient.allergies.map((a: string) => (
                         <span key={a} className="px-2.5 py-1 bg-red-50 border border-red-100 text-red-700 rounded-lg text-xs font-medium">{a}</span>
                       ))}
                     </div>
                   </div>
-                )}
+                ) : null}
                 <div>
                   <div className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1">
                     <Icon name="activity" size={12} /> CHRONIC CONDITIONS
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {patient.chronicConditions.map(c => (
-                      <span key={c} className="px-2.5 py-1 bg-amber-50 border border-amber-100 text-amber-800 rounded-lg text-xs font-medium">{c}</span>
-                    ))}
-                  </div>
+                  {patient.chronicConditions?.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {patient.chronicConditions.map((c: string) => (
+                        <span key={c} className="px-2.5 py-1 bg-amber-50 border border-amber-100 text-amber-800 rounded-lg text-xs font-medium">{c}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400">None reported.</div>
+                  )}
                 </div>
               </div>
             </Card>
@@ -138,11 +195,15 @@ export default function PatientProfile({ navigate }: Props) {
             <Card className="p-5">
               <SectionHeader title="Health Timeline" sub="Chronological record of care" />
               <div className="mt-4">
-                <TimelineEntry date="29 Aug 2026, 10:15 AM" title="Consultation – Moderate Anaemia" sub="Hb 8.6 g/dL · Referred to PHC Lunkaransar · Dr. Ankit Sharma" icon="clipboard" color="brand" />
-                <TimelineEntry date="22 Jul 2026, 09:30 AM" title="Follow-up – Thyroid review" sub="Thyronorm dose adjusted · Dr. Priya Mehta · TSH within range" icon="activity" color="green" />
-                <TimelineEntry date="14 May 2026, 11:00 AM" title="Consultation – Hypothyroidism diagnosed" sub="TSH: 8.2 mIU/L · Started Thyronorm 25 mcg" icon="clipboard" color="brand" />
-                <TimelineEntry date="03 Feb 2026" title="Vaccination – TT Booster" sub="Tetanus-Toxoid administered · Record updated" icon="shield" color="green" />
-                <TimelineEntry date="14 Jan 2026" title="Patient Registered" sub="Health ID issued: RHC-2026-8F4K92 · ASHA Meena Kumari" icon="user" color="brand" last />
+                {isMock ? (
+                  <>
+                    <TimelineEntry date="29 Aug 2026, 10:15 AM" title="Consultation – Moderate Anaemia" sub="Hb 8.6 g/dL · Referred to PHC Lunkaransar · Dr. Ankit Sharma" icon="clipboard" color="brand" />
+                    <TimelineEntry date="22 Jul 2026, 09:30 AM" title="Follow-up – Thyroid review" sub="Thyronorm dose adjusted · Dr. Priya Mehta · TSH within range" icon="activity" color="green" />
+                    <TimelineEntry date="14 May 2026, 11:00 AM" title="Consultation – Hypothyroidism diagnosed" sub="TSH: 8.2 mIU/L · Started Thyronorm 25 mcg" icon="clipboard" color="brand" />
+                    <TimelineEntry date="03 Feb 2026" title="Vaccination – TT Booster" sub="Tetanus-Toxoid administered · Record updated" icon="shield" color="green" />
+                  </>
+                ) : null}
+                <TimelineEntry date={patient.registeredAt || "Just now"} title="Patient Registered" sub={`Health ID issued: ${patient.healthId || patient.id}`} icon="user" color="brand" last />
               </div>
             </Card>
           </div>
@@ -151,8 +212,8 @@ export default function PatientProfile({ navigate }: Props) {
             {/* Current medications — doctor-only editable, ASHA view = read only */}
             <Card className="p-5">
               <SectionHeader title="Current Medications" action={<PermissionBadge type="doctor-editable" />} />
-              <div className="space-y-2.5">
-                {patient.currentMedications.map((m, i) => (
+              <div className="space-y-2.5 mt-3">
+                {patient.currentMedications?.length > 0 ? patient.currentMedications.map((m: string, i: number) => (
                   <div key={i} className="flex items-start gap-2.5 p-3 bg-brand-50 rounded-xl">
                     <Icon name="pill" size={14} className="text-brand-600 shrink-0 mt-0.5" />
                     <div>
@@ -160,45 +221,53 @@ export default function PatientProfile({ navigate }: Props) {
                       <div className="text-xs text-gray-500">{m.split(' ').slice(2).join(' ')}</div>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="text-xs text-gray-400 text-center py-4">No active prescriptions.</div>
+                )}
               </div>
             </Card>
 
             {/* Recent vitals — ASHA-recorded */}
             <Card className="p-5">
-              <SectionHeader title="Last Vitals" sub="29 Aug 2026" action={<PermissionBadge type="asha-recorded" />} />
-              <div className="space-y-2">
-                {[
-                  { label: 'Blood Pressure', value: '108/70', unit: 'mmHg', status: 'low' },
-                  { label: 'Heart Rate', value: '92', unit: 'bpm', status: 'normal' },
-                  { label: 'Temperature', value: '37.1', unit: '°C', status: 'normal' },
-                  { label: 'SpO₂', value: '97', unit: '%', status: 'normal' },
-                  { label: 'Weight', value: '51', unit: 'kg', status: 'normal' },
-                ].map(v => (
-                  <div key={v.label} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                    <span className="text-xs text-gray-500">{v.label}</span>
-                    <span className={`font-mono text-sm font-semibold ${v.status === 'low' ? 'text-amber-600' : 'text-gray-800'}`}>
-                      {v.value} <span className="text-xs font-normal text-gray-400">{v.unit}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <SectionHeader title="Last Vitals" sub={isMock ? "29 Aug 2026" : "No vitals recorded"} action={<PermissionBadge type="asha-recorded" />} />
+              {isMock ? (
+                <div className="space-y-2 mt-3">
+                  {[
+                    { label: 'Blood Pressure', value: '108/70', unit: 'mmHg', status: 'low' },
+                    { label: 'Heart Rate', value: '92', unit: 'bpm', status: 'normal' },
+                    { label: 'Temperature', value: '37.1', unit: '°C', status: 'normal' },
+                    { label: 'SpO₂', value: '97', unit: '%', status: 'normal' },
+                    { label: 'Weight', value: '51', unit: 'kg', status: 'normal' },
+                  ].map(v => (
+                    <div key={v.label} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                      <span className="text-xs text-gray-500">{v.label}</span>
+                      <span className={`font-mono text-sm font-semibold ${v.status === 'low' ? 'text-amber-600' : 'text-gray-800'}`}>
+                        {v.value} <span className="text-xs font-normal text-gray-400">{v.unit}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-gray-400 text-center py-4">Take an assessment to record vitals.</div>
+              )}
             </Card>
 
             {/* Upcoming follow-up */}
-            <Card className="p-5 border-brand-100 bg-brand-50">
-              <div className="flex items-start gap-2.5">
-                <div className="w-8 h-8 bg-brand-100 rounded-xl flex items-center justify-center shrink-0">
-                  <Icon name="history" size={16} className="text-brand-600" />
+            {isMock && (
+              <Card className="p-5 border-brand-100 bg-brand-50">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 bg-brand-100 rounded-xl flex items-center justify-center shrink-0">
+                    <Icon name="history" size={16} className="text-brand-600" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-brand-700">Upcoming Follow-up</div>
+                    <div className="text-sm font-bold text-gray-900 mt-0.5">28 Sep 2026</div>
+                    <div className="text-xs text-gray-500">PHC Lunkaransar · Dr. Ankit Sharma</div>
+                    <div className="text-xs text-brand-600 mt-1">Haematology review + iron response check</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-xs font-semibold text-brand-700">Upcoming Follow-up</div>
-                  <div className="text-sm font-bold text-gray-900 mt-0.5">28 Sep 2026</div>
-                  <div className="text-xs text-gray-500">PHC Lunkaransar · Dr. Ankit Sharma</div>
-                  <div className="text-xs text-brand-600 mt-1">Haematology review + iron response check</div>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            )}
           </div>
         </div>
       )}
@@ -332,8 +401,8 @@ export default function PatientProfile({ navigate }: Props) {
       {activeTab === 'medications' && (
         <Card className="p-5">
           <SectionHeader title="Current Medications" action={<PermissionBadge type="doctor-editable" />} />
-          <div className="space-y-3">
-            {patient.currentMedications.map((m, i) => (
+          <div className="space-y-3 mt-3">
+            {patient.currentMedications?.length > 0 ? patient.currentMedications.map((m: string, i: number) => (
               <div key={i} className="flex items-center gap-3 p-3 border border-gray-100 rounded-xl">
                 <div className="w-9 h-9 bg-brand-50 rounded-xl flex items-center justify-center">
                   <Icon name="pill" size={16} className="text-brand-600" />
@@ -343,7 +412,9 @@ export default function PatientProfile({ navigate }: Props) {
                   <div className="text-xs text-gray-400">Prescribed by Dr. Ankit Sharma · 29 Aug 2026</div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="text-xs text-gray-400 text-center py-4">No active prescriptions.</div>
+            )}
           </div>
         </Card>
       )}

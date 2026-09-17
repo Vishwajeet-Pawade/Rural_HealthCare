@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon, Card, HealthIDCard } from '../components/shared';
 
 interface Props { navigate: (s: string) => void; }
@@ -16,6 +16,27 @@ export default function HealthAssessment({ navigate }: Props) {
   const [duration, setDuration] = useState('');
   const [vitals, setVitals] = useState({ temp: '', bp: '', hr: '', spo2: '', weight: '' });
   const [obs, setObs] = useState('');
+  const [realPatients, setRealPatients] = useState<any[]>([]);
+  const [dbUser, setDbUser] = useState<any>(null);
+
+  useEffect(() => {
+    import('../imports/api').then(({ patients, auth, getToken }) => {
+      const token = getToken() || undefined;
+      auth.getCurrentUser(token).then((res: any) => {
+        if (res.data?.user) {
+          setDbUser(res.data.user);
+          if (res.data.user.role === 'PATIENT') {
+            // If patient, they can only assess themselves
+            setStep('vitals');
+          } else {
+            patients.get(token).then((res: any) => {
+              if (res.data?.patients?.length > 0) setRealPatients(res.data.patients);
+            }).catch((e: any) => console.error(e));
+          }
+        }
+      }).catch((e: any) => console.error(e));
+    });
+  }, []);
 
   function toggleSymptom(s: string) {
     setSelectedSymptoms(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
@@ -78,20 +99,20 @@ export default function HealthAssessment({ navigate }: Props) {
               </div>
             </div>
             <div className="space-y-2">
-              {[
+              {(realPatients.length > 0 ? realPatients : [
                 { id: 'RHC-2026-3M9P71', name: 'Ramesh Kumar', age: 45, village: 'Khetolai' },
                 { id: 'RHC-2026-8F4K92', name: 'Priya Devi', age: 28, village: 'Govindpur' },
                 { id: 'RHC-2026-2K8Q15', name: 'Mohan Lal', age: 67, village: 'Deshnok' },
-              ].map(p => (
-                <button key={p.id} onClick={() => setStep('vitals')}
+              ]).map((p: any) => (
+                <button key={p.id || p.healthId} onClick={() => setStep('vitals')}
                   className="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-brand-300 hover:bg-brand-50 transition-all text-left">
                   <div className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-semibold text-sm">
-                    {p.name.split(' ').map(w=>w[0]).join('')}
+                    {(p.name || 'P').split(' ').map((w: string) => w[0]).join('')}
                   </div>
                   <div className="flex-1">
                     <div className="font-medium text-sm text-gray-900">{p.name}</div>
-                    <div className="text-xs text-gray-500">{p.age} · {p.village}</div>
-                    <div className="font-mono text-[10px] text-gray-400">{p.id}</div>
+                    <div className="text-xs text-gray-500">{p.age || '--'} · {p.village || p.address || 'N/A'}</div>
+                    <div className="font-mono text-[10px] text-gray-400">{p.healthId || p.id}</div>
                   </div>
                   <Icon name="chevron_right" size={15} className="text-gray-300" />
                 </button>
@@ -243,27 +264,48 @@ export default function HealthAssessment({ navigate }: Props) {
         )}
 
         {/* Navigation */}
-        <div className="flex gap-3 mt-6 pt-5 border-t border-gray-100">
-          {step !== 'patient' && (
-            <button onClick={() => setStep(s => s === 'review' ? 'symptoms' : s === 'symptoms' ? 'vitals' : 'patient')}
-              className="px-5 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">
-              Back
-            </button>
-          )}
-          <button
-            onClick={() => {
-              if (step === 'patient') setStep('vitals');
-              else if (step === 'vitals') setStep('symptoms');
-              else if (step === 'symptoms') setStep('review');
-              else navigate('ai-risk');
-            }}
-            className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
-            {step === 'review' ? (
-              <><Icon name="brain" size={16} /> Generate AI Risk Assessment</>
-            ) : (
-              <>Continue <Icon name="chevron_right" size={16} /></>
+        <div className="flex flex-col gap-3 mt-6 pt-5 border-t border-gray-100">
+          <div className="flex gap-3">
+            {step !== 'patient' && (
+              <button onClick={() => setStep(s => s === 'review' ? 'symptoms' : s === 'symptoms' ? 'vitals' : 'patient')}
+                className="px-5 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">
+                Back
+              </button>
             )}
-          </button>
+            <button
+              onClick={async () => {
+                if (step === 'patient') setStep('vitals');
+                else if (step === 'vitals') setStep('symptoms');
+                else if (step === 'symptoms') setStep('review');
+                else {
+                  // Call API
+                  try {
+                    const { assessments, getToken } = await import('../imports/api');
+                    const payload = {
+                      patientId: 'RHC-2026-3M9P71', // hardcoded for demo
+                      symptoms: selectedSymptoms,
+                      vitals,
+                      obs
+                    };
+                    const res = await assessments.generate(payload, getToken() || undefined);
+                    if(res?.data?.assessment) {
+                      localStorage.setItem('latestAssessment', JSON.stringify(res.data.assessment));
+                      navigate('ai-risk');
+                    }
+                  } catch(e) {
+                    console.error(e);
+                    navigate('ai-risk');
+                  }
+                }
+              }}
+              className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
+              {step === 'review' ? (
+                <><Icon name="brain" size={16} /> Generate AI Risk Assessment</>
+              ) : (
+                <>Continue <Icon name="chevron_right" size={16} /></>
+              )}
+            </button>
+          </div>
         </div>
       </Card>
     </div>

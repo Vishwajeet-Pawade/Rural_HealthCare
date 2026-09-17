@@ -9,23 +9,19 @@ import { AuthenticatedRequest, AuthUserPayload, UserRole } from '../types/index.
 const JWT_SECRET = process.env.JWT_SECRET || 'ruralcare_jwt_super_secret_key_change_in_production_2026';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
-// In-memory OTP cache for development/demo (phone -> { otp, expiresAt, role })
-const otpStore = new Map<string, { otp: string; expiresAt: number; role: UserRole }>();
-
-const sendOtpSchema = z.object({
-  phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian mobile number (must be 10 digits starting with 6-9)'),
+const registerSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  fullName: z.string().min(2, 'Full name is required'),
   role: z.enum(['WORKER', 'DOCTOR', 'PATIENT', 'ADMIN']),
+  specialty: z.string().optional(),
+  hprId: z.string().optional(),
+  facility: z.string().optional(),
 });
 
-const verifyOtpSchema = z.object({
-  phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian mobile number'),
-  otp: z.string().length(6, 'OTP must be 6 digits'),
-  role: z.enum(['WORKER', 'DOCTOR', 'PATIENT', 'ADMIN']),
-});
-
-const loginPinSchema = z.object({
-  phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian mobile number'),
-  pin: z.string().length(4, 'PIN must be 4 digits'),
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string(),
   role: z.enum(['WORKER', 'DOCTOR', 'PATIENT', 'ADMIN']),
 });
 
@@ -34,58 +30,42 @@ function generateToken(payload: AuthUserPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
-export async function sendOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { phone, role } = sendOtpSchema.parse(req.body);
+    const { email, password, fullName, role, specialty, hprId, facility } = registerSchema.parse(req.body);
 
-    // Development default OTP: 123456
-    const otp = process.env.NODE_ENV === 'production'
-      ? Math.floor(100000 + Math.random() * 900000).toString()
-      : '123456';
-
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
-    otpStore.set(phone, { otp, expiresAt, role });
-
-    console.log(`[AUTH] Generated OTP for +91 ${phone} (${role}): ${otp}`);
-
-    res.status(200).json({
-      success: true,
-      message: `OTP sent successfully to +91 ${phone}`,
-      data: {
-        phone,
-        expiresInSeconds: 600,
-        // Include mock OTP in development mode for easy testing
-        devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const { phone, otp, role } = verifyOtpSchema.parse(req.body);
-
-    const cached = otpStore.get(phone);
-    const isValidDevOtp = process.env.NODE_ENV !== 'production' && otp === '123456';
-
-    if (!isValidDevOtp) {
-      if (!cached || cached.otp !== otp) {
-        throw new AppError('Invalid OTP. Please check and try again.', 400);
-      }
-      if (Date.now() > cached.expiresAt) {
-        otpStore.delete(phone);
-        throw new AppError('OTP has expired. Please request a new one.', 400);
-      }
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      throw new AppError('Email is already registered.', 400);
     }
 
-    // Clear used OTP
-    otpStore.delete(phone);
+    const passwordHash = await bcrypt.hash(password, 10);
 
-    // Find or locate user in database
-    let user = await prisma.user.findUnique({
-      where: { phone },
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        role,
+        fullName,
+        ...(role === 'DOCTOR' ? {
+          doctorProfile: {
+            create: {
+              name: fullName,
+              specialty: specialty || 'General Medicine',
+              hprId: hprId || `HPR-2026-${Math.floor(Math.random() * 90000) + 10000}`,
+              facility: {
+                create: {
+                  name: facility || 'Rural Health Centre',
+                  hfrId: `HFR-2026-${Math.floor(Math.random() * 90000) + 10000}`,
+                  facilityType: 'PHC',
+                  district: 'Default District',
+                  state: 'Default State'
+                }
+              }
+            }
+          }
+        } : {})
+      },
       include: {
         doctorProfile: { include: { facility: true } },
         workerProfile: true,
@@ -93,25 +73,9 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
       },
     });
 
-    if (!user) {
-      // Create user if not existing
-      user = await prisma.user.create({
-        data: {
-          phone,
-          role,
-          fullName: role === 'PATIENT' ? 'New Patient' : role === 'WORKER' ? 'Health Worker' : role === 'DOCTOR' ? 'Doctor' : 'Administrator',
-        },
-        include: {
-          doctorProfile: { include: { facility: true } },
-          workerProfile: true,
-          patientProfile: true,
-        },
-      });
-    }
-
     const payload: AuthUserPayload = {
       id: user.id,
-      phone: user.phone,
+      phone: user.phone || '',
       role: user.role as UserRole,
       fullName: user.fullName,
       workerId: user.workerProfile?.id,
@@ -122,14 +86,14 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
 
     const token = generateToken(payload);
 
-    res.status(200).json({
+    res.status(201).json({
       success: true,
-      message: 'Authentication successful',
+      message: 'Registration successful',
       data: {
         token,
         user: {
           id: user.id,
-          phone: user.phone,
+          email: user.email,
           role: user.role,
           fullName: user.fullName,
           doctorProfile: user.doctorProfile,
@@ -143,12 +107,12 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
   }
 }
 
-export async function loginPin(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { phone, pin, role } = loginPinSchema.parse(req.body);
+    const { email, password, role } = loginSchema.parse(req.body);
 
     const user = await prisma.user.findUnique({
-      where: { phone },
+      where: { email },
       include: {
         doctorProfile: { include: { facility: true } },
         workerProfile: true,
@@ -156,29 +120,23 @@ export async function loginPin(req: Request, res: Response, next: NextFunction):
       },
     });
 
-    if (!user) {
-      throw new AppError('User not found with this mobile number.', 404);
+    if (!user || !user.passwordHash) {
+      throw new AppError('Invalid email or password.', 401);
     }
 
     if (user.role !== role) {
       throw new AppError(`User exists but does not have the '${role}' role.`, 403);
     }
 
-    // Verify PIN: in dev, allow '1234' as default PIN, or compare hash
-    let pinValid = false;
-    if (user.pinHash) {
-      pinValid = await bcrypt.compare(pin, user.pinHash);
-    } else if (process.env.NODE_ENV !== 'production') {
-      pinValid = pin === '1234';
-    }
+    const passwordValid = await bcrypt.compare(password, user.passwordHash);
 
-    if (!pinValid) {
-      throw new AppError('Incorrect PIN. Please try again.', 401);
+    if (!passwordValid) {
+      throw new AppError('Invalid email or password.', 401);
     }
 
     const payload: AuthUserPayload = {
       id: user.id,
-      phone: user.phone,
+      phone: user.phone || '',
       role: user.role as UserRole,
       fullName: user.fullName,
       workerId: user.workerProfile?.id,
@@ -196,7 +154,7 @@ export async function loginPin(req: Request, res: Response, next: NextFunction):
         token,
         user: {
           id: user.id,
-          phone: user.phone,
+          email: user.email,
           role: user.role,
           fullName: user.fullName,
           doctorProfile: user.doctorProfile,
@@ -234,6 +192,7 @@ export async function getCurrentUser(req: AuthenticatedRequest, res: Response, n
       data: {
         user: {
           id: user.id,
+          email: user.email,
           phone: user.phone,
           role: user.role,
           fullName: user.fullName,

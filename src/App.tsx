@@ -40,12 +40,15 @@ const NAV: Record<Role, NavItem[]> = {
   doctor: [
     { id: 'doctor-dashboard', label: 'Dashboard', icon: 'dashboard' },
     { id: 'doctor-patient-view', label: 'Patient View', icon: 'user' },
+    { id: 'health-assessment', label: 'New Assessment', icon: 'clipboard' },
     { id: 'referral', label: 'Referrals', icon: 'share' },
     { id: 'emergency-access', label: 'Emergency Access', icon: 'alert' },
     { id: 'emergency-log', label: 'Emergency Log', icon: 'history' },
   ],
   patient: [
     { id: 'patient-dashboard', label: 'My Health', icon: 'home' },
+    { id: 'patient-profile', label: 'My Account', icon: 'user' },
+    { id: 'health-assessment', label: 'Self Report', icon: 'clipboard' },
     { id: 'consent', label: 'Consent & Privacy', icon: 'shield' },
     { id: 'access-request', label: 'Access Request', icon: 'lock' },
     { id: 'access-history', label: 'Access History', icon: 'eye' },
@@ -83,6 +86,8 @@ export default function App() {
     status: 'sent' | 'notified' | 'awaiting' | 'acknowledged' | 'declined' | 'escalated';
     escalationLevel: number;
   }[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [loginPhone, setLoginPhone] = useState<string>('');
 
   function fireSOS(from: string, fromRole: string, patientId: string) {
     const id = `SOS-${Date.now()}`;
@@ -98,13 +103,15 @@ export default function App() {
   function acknowledgeSOS(id: string) { setSosAlerts(a => a.map(s => s.id === id ? { ...s, status: 'acknowledged' } : s)); }
   function declineSOS(id: string) { setSosAlerts(a => a.map(s => s.id === id ? { ...s, status: 'declined', escalationLevel: s.escalationLevel + 1, dismissed: true } : s)); }
 
-  function handleLogin(r: Role) {
+  function handleLogin(r: Role, phone?: string) {
     setRole(r);
     setScreen(DEFAULT_SCREEN[r]);
     setSidebarOpen(false);
+    if (phone) setLoginPhone(phone);
   }
 
-  function navigate(s: string) {
+  function navigate(s: string, patientId?: string) {
+    if (patientId) setSelectedPatientId(patientId);
     setScreen(s);
     setSidebarOpen(false);
   }
@@ -112,13 +119,22 @@ export default function App() {
   function logout() {
     setRole('login');
     setScreen('login');
+    setSelectedPatientId(null);
+    setLoginPhone('');
     setSidebarOpen(false);
   }
 
   const pendingSync = isOffline ? 4 : 0;
 
   if (role === 'login') {
-    return <LoginScreen onLogin={handleLogin} lang={lang} setLang={setLang} />;
+    if (screen === 'register-patient') {
+      return (
+        <div className="min-h-screen bg-surface p-4">
+          <PatientRegistration navigate={() => setScreen('login')} isOffline={isOffline} />
+        </div>
+      );
+    }
+    return <LoginScreen onLogin={handleLogin} lang={lang} setLang={setLang} onNavigate={navigate} />;
   }
 
   const roleInfo = ROLE_LABELS[role];
@@ -272,13 +288,13 @@ export default function App() {
         <main className="flex-1 overflow-y-auto bg-surface">
           {screen === 'worker-dashboard' && <WorkerDashboard navigate={navigate} isOffline={isOffline} onSOS={() => fireSOS('Meena Kumari (ASHA)', 'ASHA Worker', 'RHC-2026-8F4K92')} activeSosAlert={sosAlerts.find(s => s.role === 'ASHA Worker') ?? null} />}
           {screen === 'register-patient' && <PatientRegistration navigate={navigate} isOffline={isOffline} />}
-          {screen === 'patient-profile' && <PatientProfile navigate={navigate} />}
+          {screen === 'patient-profile' && <PatientProfile navigate={navigate} patientId={selectedPatientId} />}
           {screen === 'health-assessment' && <HealthAssessment navigate={navigate} />}
           {screen === 'ai-risk' && <AIRiskAssessment navigate={navigate} />}
           {screen === 'referral' && <ReferralSystem navigate={navigate} />}
           {screen === 'doctor-dashboard' && <DoctorDashboard navigate={navigate} sosAlerts={sosAlerts.filter(s => !s.dismissed)} onDismissSOS={dismissSOS} onAcknowledgeSOS={acknowledgeSOS} onDeclineSOS={declineSOS} />}
           {screen === 'doctor-patient-view' && <DoctorPatientView navigate={navigate} />}
-          {screen === 'patient-dashboard' && <PatientMobileDashboard navigate={navigate} onSOS={() => fireSOS('Priya Devi (Patient)', 'Patient', 'RHC-2026-8F4K92')} />}
+          {screen === 'patient-dashboard' && <PatientMobileDashboard navigate={navigate} onSOS={() => fireSOS('Priya Devi (Patient)', 'Patient', 'RHC-2026-8F4K92')} loginPhone={loginPhone} />}
           {screen === 'consent' && <ConsentManagement navigate={navigate} />}
           {screen === 'access-request' && <AccessRequest navigate={navigate} />}
           {screen === 'access-history' && <AccessHistory navigate={navigate} />}

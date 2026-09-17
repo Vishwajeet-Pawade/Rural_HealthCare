@@ -41,8 +41,8 @@ export default function ReferralSystem({ navigate }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-1">Patient</label>
-              <select className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-400">
-                {PATIENTS.map(p => <option key={p.id}>{p.name} ({p.id})</option>)}
+              <select id="patientSelect" className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-400">
+                {PATIENTS.map(p => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
               </select>
             </div>
             <div>
@@ -54,7 +54,7 @@ export default function ReferralSystem({ navigate }: Props) {
             </div>
             <div className="sm:col-span-2">
               <label className="text-xs font-medium text-gray-600 block mb-1">Reason for Referral</label>
-              <textarea rows={2} placeholder="Describe the clinical reason for referral..."
+              <textarea id="referralReason" rows={2} placeholder="Describe the clinical reason for referral..."
                 className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none" />
             </div>
             <div>
@@ -74,7 +74,24 @@ export default function ReferralSystem({ navigate }: Props) {
               className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium rounded-xl text-sm border border-blue-200">
               <Icon name="brain" size={14} /> Get AI Assessment First
             </button>
-            <button onClick={() => setCreating(false)}
+            <button onClick={async () => {
+              const select = document.getElementById('patientSelect') as HTMLSelectElement;
+              const reasonInput = document.getElementById('referralReason') as HTMLTextAreaElement;
+              const patientId = select.value;
+              const patientName = PATIENTS.find(p => p.id === patientId)?.name || 'Unknown Patient';
+              
+              try {
+                const { referrals, getToken } = await import('../imports/api');
+                await referrals.create({
+                  patientId, patientName, reason: reasonInput.value, priority, toFacilityId: newPHC
+                }, getToken() || undefined);
+                setCreating(false);
+                alert("Referral created successfully.");
+              } catch(e) {
+                console.error(e);
+                alert("Failed to create referral");
+              }
+            }}
               className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl text-sm">
               Submit Referral
             </button>

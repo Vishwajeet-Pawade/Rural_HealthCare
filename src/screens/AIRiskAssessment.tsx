@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AI_ASSESSMENTS, PATIENTS } from '../data';
 import { RiskBadge, Card, AIDisclaimer, Icon } from '../components/shared';
 
@@ -6,8 +6,26 @@ interface Props { navigate: (s: string) => void; }
 
 export default function AIRiskAssessment({ navigate }: Props) {
   const [activeCase, setActiveCase] = useState(0);
-  const assessment = AI_ASSESSMENTS[activeCase];
-  const patient = PATIENTS.find(p => p.id === assessment.patientId)!;
+  const [customAssessment, setCustomAssessment] = useState<any>(null);
+
+  useEffect(() => {
+    const local = localStorage.getItem('latestAssessment');
+    if(local) {
+      setCustomAssessment(JSON.parse(local));
+    }
+  }, []);
+
+  const assessment = (activeCase === 0 && customAssessment) ? customAssessment : AI_ASSESSMENTS[activeCase];
+  const patientFound = PATIENTS.find(p => p.id === assessment.patientId);
+  const patient: any = patientFound ?? {
+    id: assessment.patientId,
+    name: 'Generated Patient',
+    age: 30,
+    gender: 'M',
+    village: 'Demo',
+    chronicConditions: [],
+    currentMedications: []
+  };
 
   const riskColors = {
     low: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-800', icon: 'bg-green-100', ring: 'ring-green-300' },
@@ -15,7 +33,8 @@ export default function AIRiskAssessment({ navigate }: Props) {
     high: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-800', icon: 'bg-red-100', ring: 'ring-red-300' },
     critical: { bg: 'bg-red-100', border: 'border-red-300', text: 'text-red-900', icon: 'bg-red-200', ring: 'ring-red-400' },
   };
-  const rc = riskColors[assessment.riskLevel];
+  const riskKey = assessment.riskLevel.toLowerCase() as keyof typeof riskColors;
+  const rc = riskColors[riskKey] || riskColors.low;
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
@@ -49,7 +68,7 @@ export default function AIRiskAssessment({ navigate }: Props) {
       {/* Patient info bar */}
       <div className="flex items-center gap-3 p-4 bg-white border border-gray-100 rounded-2xl">
         <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm">
-          {patient.name.split(' ').map(w => w[0]).join('')}
+          {patient.name.split(' ').map((w: string) => w[0]).join('')}
         </div>
         <div className="flex-1">
           <div className="font-medium text-gray-900 text-sm">{patient.name}</div>
@@ -72,12 +91,12 @@ export default function AIRiskAssessment({ navigate }: Props) {
                 <Icon name="alert" size={28} className={rc.text} />
               </div>
               <div>
-                <RiskBadge level={assessment.riskLevel} size="lg" />
+                <RiskBadge level={riskKey} size="lg" />
                 <div className={`text-sm font-medium mt-1 ${rc.text}`}>
-                  {assessment.riskLevel === 'critical' && 'Requires IMMEDIATE emergency action'}
-                  {assessment.riskLevel === 'high' && 'Requires urgent medical attention'}
-                  {assessment.riskLevel === 'moderate' && 'Requires prompt clinical evaluation'}
-                  {assessment.riskLevel === 'low' && 'Routine monitoring recommended'}
+                  {riskKey === 'critical' && 'Requires IMMEDIATE emergency action'}
+                  {riskKey === 'high' && 'Requires urgent medical attention'}
+                  {riskKey === 'moderate' && 'Requires prompt clinical evaluation'}
+                  {riskKey === 'low' && 'Routine monitoring recommended'}
                 </div>
               </div>
             </div>
@@ -86,7 +105,7 @@ export default function AIRiskAssessment({ navigate }: Props) {
           <div className="relative w-20 h-20 shrink-0">
             <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
               <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3" />
-              <circle cx="18" cy="18" r="15.9" fill="none" stroke={assessment.riskLevel === 'critical' ? '#dc2626' : '#f59e0b'} strokeWidth="3"
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke={riskKey === 'critical' ? '#dc2626' : '#f59e0b'} strokeWidth="3"
                 strokeDasharray={`${assessment.confidence} ${100 - assessment.confidence}`} strokeLinecap="round" />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -119,7 +138,7 @@ export default function AIRiskAssessment({ navigate }: Props) {
             <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Symptoms Analysed</div>
           </div>
           <div className="space-y-1">
-            {assessment.symptomsConsidered.map(s => (
+            {assessment.symptomsConsidered.map((s: string) => (
               <div key={s} className="flex items-center gap-2 text-xs text-gray-700">
                 <div className="w-1.5 h-1.5 rounded-full bg-brand-400 shrink-0" />
                 {s}
@@ -135,7 +154,7 @@ export default function AIRiskAssessment({ navigate }: Props) {
             <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Abnormal Vitals</div>
           </div>
           <div className="space-y-1">
-            {assessment.abnormalVitals.map(v => (
+            {assessment.abnormalVitals.map((v: string) => (
               <div key={v} className="flex items-center gap-2 text-xs text-red-700 bg-red-50 px-2 py-1 rounded-lg">
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
                 {v}
@@ -151,7 +170,7 @@ export default function AIRiskAssessment({ navigate }: Props) {
             <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Risk Factors</div>
           </div>
           <div className="space-y-1">
-            {assessment.riskFactors.map(f => (
+            {assessment.riskFactors.map((f: string) => (
               <div key={f} className="flex items-center gap-2 text-xs text-amber-800 bg-amber-50 px-2 py-1 rounded-lg">
                 <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                 {f}
@@ -182,7 +201,7 @@ export default function AIRiskAssessment({ navigate }: Props) {
           <div>
             <div className="text-xs font-semibold text-gray-500 mb-1.5">Chronic Conditions</div>
             <div className="flex flex-wrap gap-1.5">
-              {patient.chronicConditions.map(c => (
+              {patient.chronicConditions.map((c: string) => (
                 <span key={c} className="px-2 py-0.5 bg-amber-50 border border-amber-100 text-amber-800 rounded text-xs">{c}</span>
               ))}
             </div>
@@ -190,7 +209,7 @@ export default function AIRiskAssessment({ navigate }: Props) {
           <div>
             <div className="text-xs font-semibold text-gray-500 mb-1.5">Current Medications</div>
             <div className="flex flex-wrap gap-1.5">
-              {patient.currentMedications.map(m => (
+              {patient.currentMedications.map((m: string) => (
                 <span key={m} className="px-2 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded text-xs">{m.split(' ')[0]}</span>
               ))}
             </div>

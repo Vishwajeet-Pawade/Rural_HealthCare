@@ -9,7 +9,7 @@ interface ActiveSosAlert {
 }
 
 interface Props {
-  navigate: (s: string) => void;
+  navigate: (s: string, patientId?: string) => void;
   isOffline: boolean;
   onSOS: () => void;
   activeSosAlert?: ActiveSosAlert | null;
@@ -34,13 +34,38 @@ export default function WorkerDashboard({ navigate, isOffline, onSOS, activeSosA
   const [selectedDoctorId, setSelectedDoctorId] = useState('doc1');
   const [selectionMode, setSelectionMode] = useState<'smart' | 'manual'>('smart');
   const [countdown, setCountdown] = useState(90);
+  const [realPatients, setRealPatients] = useState<any[]>([]);
+  const [dbUser, setDbUser] = useState<any>(null);
   const today = '31 Aug 2026';
 
-  const highRisk = PATIENTS.filter(p => p.riskLevel === 'high' || p.riskLevel === 'critical');
+  useEffect(() => {
+    import('../imports/api').then(({ patients, auth, getToken }) => {
+      const token = getToken() || undefined;
+      patients.get(token).then(res => {
+        if(res.data?.patients?.length > 0) {
+          const mapped = res.data.patients.map((p: any) => ({
+             ...p,
+             riskLevel: p.riskLevel.toLowerCase()
+          }));
+          setRealPatients(mapped);
+        }
+      }).catch(e => console.error("Failed to load patients", e));
+
+      auth.getCurrentUser(token).then((res: any) => {
+        if(res.data?.user) setDbUser(res.data.user);
+      }).catch((e: any) => console.error("Failed to load user", e));
+    });
+  }, []);
+
+  const basePatients = realPatients.length > 0 ? realPatients : PATIENTS;
+  const highRisk = basePatients.filter(p => p.riskLevel === 'high' || p.riskLevel === 'critical');
   const pendingReferrals = REFERRALS.filter(r => r.status === 'pending');
   const filtered = search.trim()
-    ? PATIENTS.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.id.includes(search.toUpperCase()))
-    : PATIENTS.slice(0, 4);
+    ? basePatients.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.id?.includes(search.toUpperCase()))
+    : basePatients.slice(0, 4);
+
+  const workerName = dbUser?.fullName?.split(' ')[0] || 'Meena';
+
 
   useEffect(() => {
     if (!sosSent) return;
@@ -252,8 +277,8 @@ export default function WorkerDashboard({ navigate, isOffline, onSOS, activeSosA
       {/* Greeting */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold text-gray-900">Good morning, Meena</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{today} · Village Health Centre, Govindpur</p>
+          <h1 className="font-display text-2xl font-bold text-gray-900">Good morning, {workerName}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{today} · {dbUser?.workerProfile?.village || 'Village Health Centre, Govindpur'}</p>
         </div>
         <div className="flex items-center gap-2">
           {isOffline && (
@@ -349,7 +374,7 @@ export default function WorkerDashboard({ navigate, isOffline, onSOS, activeSosA
               {filtered.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-gray-400">No patients found</div>
               ) : filtered.map(p => (
-                <PatientRow key={p.id} patient={p} onClick={() => navigate('patient-profile')} />
+                <PatientRow key={p.id} patient={p} onClick={() => navigate('patient-profile', p.id)} />
               ))}
             </div>
             {!search && (
@@ -371,10 +396,10 @@ export default function WorkerDashboard({ navigate, isOffline, onSOS, activeSosA
             </div>
             <div className="px-4 pb-4 space-y-3">
               {highRisk.map(p => (
-                <button key={p.id} onClick={() => navigate('patient-profile')}
+                <button key={p.id} onClick={() => navigate('patient-profile', p.id)}
                   className="w-full text-left flex items-center gap-3 p-3 bg-red-50 rounded-xl hover:bg-red-100 transition-colors">
                   <div className="w-8 h-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs shrink-0">
-                    {p.name.split(' ').map(w => w[0]).join('').slice(0,2)}
+                    {p.name.split(' ').map((w: string) => w[0]).join('').slice(0,2)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-gray-900 truncate">{p.name}</div>

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { Role } from '../types';
 import { Icon } from '../components/shared';
+import { auth, saveToken } from '../imports/api';
 
-interface Props { onLogin: (role: Role) => void; lang: 'en' | 'hi'; setLang: (l: 'en' | 'hi') => void; }
+interface Props { onLogin: (role: Role, phone?: string) => void; lang: 'en' | 'hi'; setLang: (l: 'en' | 'hi') => void; onNavigate: (s: string) => void; }
 
 const ROLES = [
   { id: 'patient' as Role, label: 'Patient', labelHi: 'रोगी', icon: 'user', sub: 'View your health records', subHi: 'अपने स्वास्थ्य रिकॉर्ड देखें', color: 'bg-teal-50 border-teal-200 text-teal-700' },
@@ -11,37 +12,57 @@ const ROLES = [
   { id: 'admin' as Role, label: 'Administrator', labelHi: 'प्रशासक', icon: 'chart', sub: 'Analytics & system management', subHi: 'विश्लेषण और प्रबंधन', color: 'bg-saffron-50 border-saffron-200 text-saffron-700' },
 ];
 
-export default function LoginScreen({ onLogin, lang, setLang }: Props) {
+export default function LoginScreen({ onLogin, lang, setLang, onNavigate }: Props) {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-  const [step, setStep] = useState<'role' | 'otp' | 'pin'>('role');
-  const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [pin, setPin] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [specialty, setSpecialty] = useState('');
+  const [hprId, setHprId] = useState('');
+  const [facility, setFacility] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const hi = lang === 'hi';
 
-  function handleOTPChange(i: number, val: string) {
-    const next = [...otp];
-    next[i] = val.slice(-1);
-    setOtp(next);
-    if (val && i < 5) {
-      const el = document.getElementById(`otp-${i + 1}`);
-      if (el) (el as HTMLInputElement).focus();
-    }
-  }
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedRole || !email || !password) return;
+    setLoading(true);
+    setError('');
 
-  function handleLogin() {
-    if (selectedRole) onLogin(selectedRole);
+    try {
+      if (isRegistering) {
+        if (!fullName) throw new Error('Full name is required to register');
+        if (selectedRole === 'doctor') {
+          if (!specialty) throw new Error('Specialty is required for doctors');
+          if (!facility) throw new Error('Facility name is required for doctors');
+        }
+        
+        const profileData = selectedRole === 'doctor' ? { specialty, hprId, facility } : {};
+        const res = await auth.register(email, password, fullName, selectedRole.toUpperCase(), profileData);
+        saveToken(res.data.token);
+        // Temporarily passing email as phone prop for compatibility until App.tsx is fully updated
+        onLogin(res.data.user.role.toLowerCase() as Role, email);
+      } else {
+        const res = await auth.login(email, password, selectedRole.toUpperCase());
+        saveToken(res.data.token);
+        onLogin(res.data.user.role.toLowerCase() as Role, email);
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background pattern */}
       <div className="absolute inset-0 opacity-5">
         <svg width="100%" height="100%"><defs><pattern id="grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="1"/></pattern></defs><rect width="100%" height="100%" fill="url(#grid)"/></svg>
       </div>
 
       <div className="relative z-10 w-full max-w-md">
-        {/* Language toggle */}
         <div className="flex justify-end mb-4">
           <button onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
             className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm transition-colors border border-white/20">
@@ -50,9 +71,7 @@ export default function LoginScreen({ onLogin, lang, setLang }: Props) {
           </button>
         </div>
 
-        {/* Card */}
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
-          {/* Header */}
           <div className="bg-brand-600 px-8 py-6 text-white">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
@@ -69,7 +88,7 @@ export default function LoginScreen({ onLogin, lang, setLang }: Props) {
           </div>
 
           <div className="px-8 py-6">
-            {step === 'role' && (
+            {selectedRole === null && (
               <>
                 <h2 className="font-display text-base font-semibold text-gray-800 mb-4">
                   {hi ? 'अपनी भूमिका चुनें' : 'Select your role'}
@@ -86,100 +105,111 @@ export default function LoginScreen({ onLogin, lang, setLang }: Props) {
                     </button>
                   ))}
                 </div>
-
-                {selectedRole && (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 block mb-1">
-                        {hi ? 'मोबाइल नंबर / यूजरनेम' : 'Mobile Number / Username'}
-                      </label>
-                      <div className="flex gap-2">
-                        <span className="px-3 py-2.5 bg-gray-100 rounded-xl text-sm text-gray-500 border border-gray-200">+91</span>
-                        <input
-                          type="tel" maxLength={10} value={phone} onChange={e => setPhone(e.target.value)}
-                          placeholder="9XXXXXXXXX"
-                          className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent"
-                        />
-                      </div>
-                    </div>
-                    <button onClick={() => setStep('otp')} disabled={phone.length < 10}
-                      className="w-full py-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors text-sm active:scale-95">
-                      {hi ? 'OTP भेजें' : 'Send OTP'}
-                    </button>
-                    <button onClick={() => setStep('pin')} className="w-full py-2 text-brand-600 text-sm hover:underline">
-                      {hi ? 'PIN से लॉगिन करें' : 'Login with PIN instead'}
-                    </button>
-                  </div>
-                )}
               </>
             )}
 
-            {step === 'otp' && (
-              <div className="space-y-5">
+            {selectedRole && (
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <button onClick={() => setStep('role')} className="text-xs text-brand-600 flex items-center gap-1 mb-4 hover:underline">
-                    ← {hi ? 'वापस जाएं' : 'Back'}
+                  <button type="button" onClick={() => setSelectedRole(null)} className="text-xs text-brand-600 flex items-center gap-1 mb-4 hover:underline">
+                    ← {hi ? 'भूमिका बदलें' : 'Change Role'}
                   </button>
                   <h2 className="font-display text-base font-semibold text-gray-800">
-                    {hi ? 'OTP दर्ज करें' : 'Enter OTP'}
+                    {isRegistering ? (hi ? 'रजिस्टर करें' : 'Register') : (hi ? 'लॉगिन करें' : 'Login')} 
+                    <span className="text-brand-600"> {ROLES.find(r => r.id === selectedRole)?.label}</span>
                   </h2>
-                  <p className="text-xs text-gray-500 mt-1">{hi ? `+91 ${phone} पर भेजा गया` : `Sent to +91 ${phone}`}</p>
                 </div>
-                <div className="flex gap-2 justify-center">
-                  {otp.map((digit, i) => (
-                    <input key={i} id={`otp-${i}`} type="text" inputMode="numeric" maxLength={1} value={digit}
-                      onChange={e => handleOTPChange(i, e.target.value)}
-                      className="w-10 h-12 text-center border-2 border-gray-200 rounded-xl text-lg font-mono font-semibold focus:outline-none focus:border-brand-500 transition-colors"
-                    />
-                  ))}
-                </div>
-                <button onClick={handleLogin} className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors active:scale-95">
-                  {hi ? 'सत्यापित करें और लॉगिन करें' : 'Verify & Login'}
-                </button>
-                <p className="text-center text-xs text-gray-400">
-                  {hi ? 'OTP नहीं मिला?' : "Didn't receive OTP?"}{' '}
-                  <button className="text-brand-600 hover:underline">{hi ? 'पुनः भेजें' : 'Resend'}</button>
-                </p>
-              </div>
-            )}
 
-            {step === 'pin' && (
-              <div className="space-y-5">
-                <div>
-                  <button onClick={() => setStep('role')} className="text-xs text-brand-600 flex items-center gap-1 mb-4 hover:underline">
-                    ← {hi ? 'वापस जाएं' : 'Back'}
-                  </button>
-                  <h2 className="font-display text-base font-semibold text-gray-800">
-                    {hi ? 'PIN दर्ज करें' : 'Enter your PIN'}
-                  </h2>
-                </div>
-                <div className="flex gap-3 justify-center">
-                  {[0,1,2,3].map(i => (
-                    <div key={i} className={`w-12 h-14 border-2 rounded-xl flex items-center justify-center ${pin.length > i ? 'border-brand-500 bg-brand-50' : 'border-gray-200'}`}>
-                      {pin.length > i && <div className="w-3 h-3 rounded-full bg-brand-600" />}
+                {error && <p className="text-red-500 text-xs text-center bg-red-50 p-2 rounded-lg border border-red-100">{error}</p>}
+                
+                {isRegistering && (
+                  <>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 block mb-1">
+                        {hi ? 'पूरा नाम' : 'Full Name'}
+                      </label>
+                      <input
+                        type="text" required value={fullName} onChange={e => setFullName(e.target.value)}
+                        placeholder="e.g. John Doe"
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                      />
                     </div>
-                  ))}
+                    
+                    {selectedRole === 'doctor' && (
+                      <>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 block mb-1">
+                            {hi ? 'विशेषता' : 'Specialty'} <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text" required value={specialty} onChange={e => setSpecialty(e.target.value)}
+                            placeholder="e.g. General Medicine"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 block mb-1">
+                            {hi ? 'सुविधा का नाम (PHC)' : 'Facility Name (PHC)'} <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text" required value={facility} onChange={e => setFacility(e.target.value)}
+                            placeholder="e.g. PHC Lunkaransar"
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 block mb-1">
+                            {hi ? 'HPR रजिस्ट्रेशन नंबर' : 'HPR Registration Number'} <span className="text-gray-400">(Optional)</span>
+                          </label>
+                          <input
+                            type="text" value={hprId} onChange={e => setHprId(e.target.value)}
+                            placeholder="e.g. HPR-2024-..."
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+                
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">
+                    {hi ? 'ईमेल पता' : 'Email Address'}
+                  </label>
+                  <input
+                    type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                  />
                 </div>
-                <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
-                  {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((d, i) => (
-                    <button key={i} onClick={() => {
-                      if (d === '⌫') setPin(p => p.slice(0,-1));
-                      else if (d && pin.length < 4) setPin(p => p + d);
-                    }}
-                      className={`h-14 rounded-xl text-lg font-semibold transition-all active:scale-95 ${d ? 'bg-gray-100 hover:bg-gray-200 text-gray-800' : 'cursor-default'}`}>
-                      {d}
-                    </button>
-                  ))}
+
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">
+                    {hi ? 'पासवर्ड' : 'Password'}
+                  </label>
+                  <input
+                    type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent"
+                  />
                 </div>
-                <button onClick={handleLogin} disabled={pin.length < 4}
-                  className="w-full py-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold rounded-xl transition-colors active:scale-95">
-                  {hi ? 'लॉगिन करें' : 'Login'}
+
+                <button type="submit" disabled={!email || !password || (isRegistering && !fullName) || loading}
+                  className="w-full mt-2 py-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors text-sm active:scale-95">
+                  {loading ? 'Please wait...' : isRegistering ? (hi ? 'रजिस्टर करें' : 'Register') : (hi ? 'लॉगिन करें' : 'Login')}
                 </button>
-              </div>
+
+                <div className="mt-4 text-center">
+                  <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="text-brand-600 text-sm hover:underline font-medium">
+                    {isRegistering 
+                      ? (hi ? 'पहले से खाता है? लॉगिन करें' : 'Already have an account? Login') 
+                      : (hi ? 'खाता नहीं है? रजिस्टर करें' : "Don't have an account? Register")}
+                  </button>
+                </div>
+              </form>
             )}
           </div>
 
-          {/* Footer */}
           <div className="px-8 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
               <Icon name="lock" size={10} />
@@ -192,7 +222,6 @@ export default function LoginScreen({ onLogin, lang, setLang }: Props) {
           </div>
         </div>
 
-        {/* Accessibility */}
         <div className="mt-4 flex justify-center">
           <button className="text-white/60 text-xs hover:text-white/90 flex items-center gap-1">
             <Icon name="info" size={12} />
