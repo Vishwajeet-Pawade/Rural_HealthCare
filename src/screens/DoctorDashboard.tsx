@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PATIENTS, REFERRALS } from '../data';
 import { StatCard, RiskBadge, PriorityBadge, ReferralBadge, PatientRow, Card, SectionHeader, Icon, HPRBadge, HFRBadge, DutyStatusBadge, ABDMLayerLegend } from '../components/shared';
+import { getDoctorDashboardData, updateDoctorDutyStatus } from '../api/client';
 
 interface SOSAlert {
   id: string; from: string; role: string; patientId: string; location: string;
@@ -25,12 +26,40 @@ const STATUS_OPTIONS: { value: DutyStatus; label: string; sub: string; dot: stri
 ];
 
 export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS, onAcknowledgeSOS, onDeclineSOS }: Props) {
+  const [patients, setPatients] = useState(PATIENTS);
+  const [referrals, setReferrals] = useState(REFERRALS);
+  const [doctorId, setDoctorId] = useState<string>('doc1');
   const [search, setSearch] = useState('');
   const [myStatus, setMyStatus] = useState<DutyStatus>('available');
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
+  const [isLive, setIsLive] = useState(false);
 
-  const pendingReferrals = REFERRALS.filter(r => r.status === 'pending' || r.status === 'accepted');
-  const criticalPatients = PATIENTS.filter(p => p.riskLevel === 'critical' || p.riskLevel === 'high');
+  useEffect(() => {
+    getDoctorDashboardData()
+      .then(data => {
+        if (data?.patients?.length) {
+          setPatients(data.patients);
+          if (data.referrals?.length) setReferrals(data.referrals);
+          if (data.doctor) {
+            setDoctorId(data.doctor.id);
+            if (data.doctor.dutyStatus) {
+              setMyStatus(data.doctor.dutyStatus.toLowerCase() as DutyStatus);
+            }
+          }
+          setIsLive(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  function handleStatusChange(status: DutyStatus) {
+    setMyStatus(status);
+    setStatusPickerOpen(false);
+    updateDoctorDutyStatus(doctorId, status.toUpperCase() as any).catch(() => {});
+  }
+
+  const pendingReferrals = referrals.filter(r => r.status === 'pending' || r.status === 'accepted');
+  const criticalPatients = patients.filter(p => p.riskLevel === 'critical' || p.riskLevel === 'high');
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -57,7 +86,7 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
                   {STATUS_OPTIONS.map(opt => (
                     <button
                       key={opt.value}
-                      onClick={() => { setMyStatus(opt.value); setStatusPickerOpen(false); }}
+                      onClick={() => handleStatusChange(opt.value)}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left ${myStatus === opt.value ? 'bg-gray-50' : ''}`}
                     >
                       <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${opt.dot}`} />

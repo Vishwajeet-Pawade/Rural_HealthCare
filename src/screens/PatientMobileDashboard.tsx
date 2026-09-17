@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon, HealthIDCard, ConsentBadge, RiskBadge, Card, PermissionBadge, RecordOwnershipBanner } from '../components/shared';
+import { getPatientDashboardData } from '../api/client';
 
 interface Props { navigate: (s: string) => void; onSOS: () => void; }
 
@@ -54,9 +55,44 @@ const LAB_REPORTS = [
 ];
 
 export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
+  const [patientData, setPatientData] = useState<any>(null);
+  const [history, setHistory] = useState(FULL_HISTORY);
   const [sosConfirm, setSosConfirm] = useState(false);
   const [sosSent, setSosSent] = useState(false);
   const [expandedConsultation, setExpandedConsultation] = useState<string | null>(null);
+
+  useEffect(() => {
+    getPatientDashboardData('RHC-2026-8F4K92')
+      .then(data => {
+        if (data?.patient) {
+          setPatientData(data.patient);
+          if (data.consultations?.length) {
+            setHistory(data.consultations.map((c: any) => ({
+              id: c.consultationCode || c.id,
+              date: c.date,
+              time: c.time,
+              recordedBy: c.workerName || 'ASHA Worker',
+              reviewedBy: c.doctorName || 'Dr. Ankit Sharma',
+              facility: c.facilityName || 'PHC Lunkaransar',
+              symptoms: c.symptoms || [],
+              vitals: {
+                bp: c.vitals?.bloodPressure ? `${c.vitals.bloodPressure} mmHg` : '108/70 mmHg',
+                hr: c.vitals?.heartRate ? `${c.vitals.heartRate} bpm` : '92 bpm',
+                temp: c.vitals?.temperature ? `${c.vitals.temperature}°C` : '37.1°C',
+                spo2: c.vitals?.spo2 ? `${c.vitals.spo2}%` : '97%',
+                wt: c.vitals?.weight ? `${c.vitals.weight} kg` : '51 kg',
+              },
+              diagnosis: c.diagnosis || 'Clinical evaluation',
+              prescription: c.prescription || [],
+              notes: c.notes || '',
+              risk: (c.riskLevel?.toLowerCase() || 'low') as any,
+              followUp: c.followUpDate || '28 Sep 2026',
+            })));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
@@ -96,14 +132,16 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between pt-2">
         <div>
-          <h1 className="font-display text-xl font-bold text-gray-900">Priya Devi</h1>
-          <p className="text-xs text-gray-500">Patient · Govindpur, Bikaner</p>
+          <h1 className="font-display text-xl font-bold text-gray-900">{patientData?.name || 'Priya Devi'}</h1>
+          <p className="text-xs text-gray-500">Patient · {patientData?.village || 'Govindpur'}, {patientData?.district || 'Bikaner'}</p>
         </div>
         <div className="flex items-center gap-2">
           <button className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
             <Icon name="bell" size={18} className="text-gray-600" />
           </button>
-          <div className="w-9 h-9 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm">PD</div>
+          <div className="w-9 h-9 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm">
+            {(patientData?.name || 'Priya Devi').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+          </div>
           {/* SOS */}
           <button onClick={() => setSosConfirm(true)}
             className="relative flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-md shadow-red-200 transition-all">
@@ -118,8 +156,10 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="text-brand-200 text-xs font-medium mb-1">My Health ID</div>
-            <div className="font-mono text-lg font-bold tracking-wider">RHC-2026-8F4K92</div>
-            <div className="text-brand-200 text-xs mt-1">Priya Devi · 28F · O+</div>
+            <div className="font-mono text-lg font-bold tracking-wider">{patientData?.healthId || 'RHC-2026-8F4K92'}</div>
+            <div className="text-brand-200 text-xs mt-1">
+              {patientData?.name || 'Priya Devi'} · {patientData ? `${patientData.age || 28}${patientData.gender?.[0] || 'F'}` : '28F'} · {patientData?.bloodGroup || 'O+'}
+            </div>
           </div>
           {/* Mini QR placeholder */}
           <div className="w-16 h-16 bg-white rounded-xl p-1.5 shrink-0">
@@ -187,7 +227,7 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-display text-base font-bold text-gray-900">My Health Record</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{FULL_HISTORY.length} consultations · longitudinal history</p>
+            <p className="text-xs text-gray-500 mt-0.5">{history.length} consultations · longitudinal history</p>
           </div>
           <PermissionBadge type="view-only" />
         </div>
@@ -195,7 +235,7 @@ export default function PatientMobileDashboard({ navigate, onSOS }: Props) {
         <RecordOwnershipBanner />
 
         {/* Consultation timeline — expandable cards */}
-        {FULL_HISTORY.map((entry) => {
+        {history.map((entry) => {
           const isExpanded = expandedConsultation === entry.id;
           return (
             <Card key={entry.id} className="overflow-hidden">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PATIENTS, REFERRALS } from '../data';
 import { StatCard, SectionHeader, PatientRow, RiskBadge, ReferralBadge, PriorityBadge, Card, Icon, HPRBadge, DutyStatusBadge, ABDMLayerLegend } from '../components/shared';
+import { getWorkerDashboardData } from '../api/client';
 
 interface ActiveSosAlert {
   id: string;
@@ -28,6 +29,10 @@ const ESCALATION_CHAIN = [
 ];
 
 export default function WorkerDashboard({ navigate, isOffline, onSOS, activeSosAlert }: Props) {
+  const [patients, setPatients] = useState(PATIENTS);
+  const [referrals, setReferrals] = useState(REFERRALS);
+  const [onDutyDoctors, setOnDutyDoctors] = useState(ON_DUTY_DOCTORS);
+  const [isLive, setIsLive] = useState(false);
   const [search, setSearch] = useState('');
   const [sosConfirm, setSosConfirm] = useState(false);
   const [sosSent, setSosSent] = useState(false);
@@ -36,11 +41,26 @@ export default function WorkerDashboard({ navigate, isOffline, onSOS, activeSosA
   const [countdown, setCountdown] = useState(90);
   const today = '31 Aug 2026';
 
-  const highRisk = PATIENTS.filter(p => p.riskLevel === 'high' || p.riskLevel === 'critical');
-  const pendingReferrals = REFERRALS.filter(r => r.status === 'pending');
+  useEffect(() => {
+    if (!isOffline) {
+      getWorkerDashboardData()
+        .then(data => {
+          if (data?.patients?.length) {
+            setPatients(data.patients);
+            if (data.pendingReferrals?.length) setReferrals(data.pendingReferrals);
+            if (data.onDutyDoctors?.length) setOnDutyDoctors(data.onDutyDoctors);
+            setIsLive(true);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOffline]);
+
+  const highRisk = patients.filter(p => p.riskLevel === 'high' || p.riskLevel === 'critical');
+  const pendingReferrals = referrals.filter(r => r.status === 'pending');
   const filtered = search.trim()
-    ? PATIENTS.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.id.includes(search.toUpperCase()))
-    : PATIENTS.slice(0, 4);
+    ? patients.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.id.includes(search.toUpperCase()))
+    : patients.slice(0, 4);
 
   useEffect(() => {
     if (!sosSent) return;
@@ -88,7 +108,7 @@ export default function WorkerDashboard({ navigate, isOffline, onSOS, activeSosA
                   </button>
                 </div>
                 {selectionMode === 'smart' && (() => {
-                  const rec = ON_DUTY_DOCTORS.find(d => d.recommended)!;
+                  const rec = onDutyDoctors.find(d => d.recommended) || onDutyDoctors[0];
                   return (
                     <div className="rounded-2xl border-2 border-brand-400 bg-brand-50 p-4">
                       <div className="flex items-start gap-3">
@@ -99,12 +119,12 @@ export default function WorkerDashboard({ navigate, isOffline, onSOS, activeSosA
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-sm text-gray-900">{rec.name}</span>
                             <HPRBadge compact />
-                            <DutyStatusBadge status={rec.status} />
+                            <DutyStatusBadge status={rec.status as any} />
                           </div>
                           <div className="text-xs text-gray-600 mt-0.5">{rec.specialty} · {rec.facility}</div>
                           <div className="text-[10px] font-mono text-gray-400 mt-0.5">{rec.hprId} · {rec.distance}</div>
                           <div className="flex flex-wrap gap-1 mt-2">
-                            {rec.reasons.map(r => (
+                            {(rec.reasons || []).map(r => (
                               <span key={r} className="px-2 py-0.5 bg-white border border-brand-200 text-brand-700 rounded-full text-[10px] font-medium">{r}</span>
                             ))}
                           </div>
@@ -119,7 +139,7 @@ export default function WorkerDashboard({ navigate, isOffline, onSOS, activeSosA
                 })()}
                 {selectionMode === 'manual' && (
                   <div className="space-y-2">
-                    {ON_DUTY_DOCTORS.map(doc => (
+                    {onDutyDoctors.map(doc => (
                       <button key={doc.id} onClick={() => doc.status !== 'offline' && setSelectedDoctorId(doc.id)}
                         className={`w-full text-left p-3 rounded-xl border-2 transition-all ${selectedDoctorId === doc.id ? 'border-brand-400 bg-brand-50' : 'border-gray-100 bg-white hover:border-gray-200'} ${doc.status === 'offline' ? 'opacity-40' : ''}`}>
                         <div className="flex items-center gap-3">

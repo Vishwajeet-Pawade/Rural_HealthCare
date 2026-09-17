@@ -3,36 +3,164 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+
+// ─── Idempotent Upsert Helpers ───────────────────────────────────────────────
+
+async function upsertFacility(data: any) {
+  return prisma.facility.upsert({
+    where: { hfrId: data.hfrId },
+    update: data,
+    create: data,
+  });
+}
+
+async function upsertUser(data: any) {
+  return prisma.user.upsert({
+    where: { phone: data.phone },
+    update: { fullName: data.fullName, role: data.role, pinHash: data.pinHash, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
+async function upsertDoctor(data: any) {
+  return prisma.doctor.upsert({
+    where: { hprId: data.hprId },
+    update: { ...data, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
+async function upsertWorker(data: any) {
+  return prisma.worker.upsert({
+    where: { userId: data.userId },
+    update: { ...data, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
+async function upsertPatient(data: any) {
+  return prisma.patient.upsert({
+    where: { healthId: data.healthId },
+    update: { ...data, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
+async function upsertConsultation(data: any) {
+  return prisma.consultation.upsert({
+    where: { consultationCode: data.consultationCode },
+    update: { ...data, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
+async function upsertAIAssessment(data: any) {
+  return prisma.aIAssessment.upsert({
+    where: { assessmentCode: data.assessmentCode },
+    update: { ...data, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
+async function upsertReferral(data: any) {
+  return prisma.referral.upsert({
+    where: { referralCode: data.referralCode },
+    update: { ...data, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
+async function upsertSosAlert(data: any) {
+  return prisma.sosAlert.upsert({
+    where: { sosCode: data.sosCode },
+    update: data,
+    create: data,
+  });
+}
+
+async function upsertConsentArtifact(data: any) {
+  return prisma.consentArtifact.upsert({
+    where: { consentCode: data.consentCode },
+    update: { ...data, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
+async function upsertEmergencyAccessLog(data: any) {
+  return prisma.emergencyAccessLog.upsert({
+    where: { logCode: data.logCode },
+    update: data,
+    create: data,
+  });
+}
+
+async function upsertAuditLog(data: any) {
+  return prisma.auditLog.upsert({
+    where: { auditCode: data.auditCode },
+    update: { ...data, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
+async function upsertSyncRecord(data: any) {
+  return prisma.syncRecord.upsert({
+    where: { syncCode: data.syncCode },
+    update: data,
+    create: data,
+  });
+}
+
+async function upsertMockHFR(data: any) {
+  return prisma.mockHFRFacility.upsert({
+    where: { hfrId: data.hfrId },
+    update: data,
+    create: data,
+  });
+}
+
+async function upsertMockHPR(data: any) {
+  return prisma.mockHPRProfessional.upsert({
+    where: { hprId: data.hprId },
+    update: data,
+    create: data,
+  });
+}
+
+async function upsertMockWorker(data: any) {
+  return prisma.mockWorkerDirectory.upsert({
+    where: { workerCode: data.workerCode },
+    update: data,
+    create: data,
+  });
+}
+
+async function upsertMockABHA(data: any) {
+  return prisma.mockABHAProfile.upsert({
+    where: { abhaAddress: data.abhaAddress },
+    update: data,
+    create: data,
+  });
+}
+
+async function upsertMedicine(data: any) {
+  return prisma.medicine.upsert({
+    where: { code: data.code },
+    update: { ...data, isDemo: true },
+    create: { ...data, isDemo: true },
+  });
+}
+
 async function main() {
   console.log('🌱 Seeding RuralCare database with SIH 26133 domain records...');
 
   // Default PIN hash for '1234'
   const defaultPinHash = await bcrypt.hash('1234', 10);
 
-  // 1. Clean existing records in reverse dependency order
-  await prisma.mockABHAProfile.deleteMany();
-  await prisma.mockWorkerDirectory.deleteMany();
-  await prisma.mockHPRProfessional.deleteMany();
-  await prisma.mockHFRFacility.deleteMany();
-  await prisma.emergencyAccessLog.deleteMany();
-  await prisma.auditLog.deleteMany();
-  await prisma.consentArtifact.deleteMany();
-  await prisma.sosAlert.deleteMany();
-  await prisma.referral.deleteMany();
-  await prisma.aIAssessment.deleteMany();
-  await prisma.consultation.deleteMany();
-  await prisma.syncRecord.deleteMany();
-  await prisma.patient.deleteMany();
-  await prisma.worker.deleteMany();
-  await prisma.doctor.deleteMany();
-  await prisma.facility.deleteMany();
-  await prisma.user.deleteMany();
-
-  console.log('✓ Cleaned existing records.');
+  // 1. Preserving existing user and operational records (Idempotent seed mode)
+  console.log('✓ Preserving existing database records.');
 
   // 2. Seed Facilities (ABDM HFR)
-  const phcLunkaransar = await prisma.facility.create({
-    data: {
+  const phcLunkaransar = await upsertFacility({
       hfrId: 'HFR-2024-00891',
       name: 'PHC Lunkaransar',
       facilityType: 'PHC',
@@ -41,11 +169,9 @@ async function main() {
       latitude: 28.5305,
       longitude: 73.7432,
       address: 'Near Bus Stand, Lunkaransar, Bikaner – 334602',
-    },
-  });
+    });
 
-  const chcBikaner = await prisma.facility.create({
-    data: {
+  const chcBikaner = await upsertFacility({
       hfrId: 'HFR-2024-00289',
       name: 'CHC Bikaner',
       facilityType: 'CHC',
@@ -54,11 +180,9 @@ async function main() {
       latitude: 28.0229,
       longitude: 73.3119,
       address: 'Station Road, Bikaner – 334001',
-    },
-  });
+    });
 
-  const dhBikaner = await prisma.facility.create({
-    data: {
+  const dhBikaner = await upsertFacility({
       hfrId: 'HFR-2024-00371',
       name: 'District Hospital Bikaner',
       facilityType: 'DH',
@@ -67,8 +191,7 @@ async function main() {
       latitude: 28.0181,
       longitude: 73.3175,
       address: 'PBM Hospital Campus, Bikaner – 334003',
-    },
-  });
+    });
 
   // Additional PHCs from ADMIN_STATS / PHC_ACTIVITY
   for (const phc of [
@@ -77,41 +200,34 @@ async function main() {
     { name: 'PHC Deshnok', hfrId: 'HFR-2024-00894' },
     { name: 'PHC Dungargarh', hfrId: 'HFR-2024-00895' },
   ]) {
-    await prisma.facility.create({
-      data: {
+    await upsertFacility({
         hfrId: phc.hfrId,
         name: phc.name,
         facilityType: 'PHC',
         district: 'Bikaner',
         state: 'Rajasthan',
-      },
-    });
+      });
   }
   console.log('✓ Seeded facilities.');
 
   // 3. Seed Users & Profiles
 
   // Admin: Rajiv Singh
-  const adminUser = await prisma.user.create({
-    data: {
+  const adminUser = await upsertUser({
       phone: '9829000001',
       role: Role.ADMIN,
       fullName: 'Rajiv Singh',
       pinHash: defaultPinHash,
-    },
-  });
+    });
 
   // Doctor 1: Dr. Ankit Sharma (PHC Lunkaransar)
-  const doc1User = await prisma.user.create({
-    data: {
+  const doc1User = await upsertUser({
       phone: '9829000002',
       role: Role.DOCTOR,
       fullName: 'Dr. Ankit Sharma',
       pinHash: defaultPinHash,
-    },
-  });
-  const doc1 = await prisma.doctor.create({
-    data: {
+    });
+  const doc1 = await upsertDoctor({
       userId: doc1User.id,
       hprId: 'HPR-2024-00142',
       name: 'Dr. Ankit Sharma',
@@ -121,20 +237,16 @@ async function main() {
       distance: '2.1 km',
       isPreferred: true,
       recommendationReasons: ['Primary assigned doctor', 'On-duty now', 'General Medicine specialist', 'Nearest PHC'],
-    },
-  });
+    });
 
   // Doctor 2: Dr. Priya Mehta (CHC Bikaner)
-  const doc2User = await prisma.user.create({
-    data: {
+  const doc2User = await upsertUser({
       phone: '9829000003',
       role: Role.DOCTOR,
       fullName: 'Dr. Priya Mehta',
       pinHash: defaultPinHash,
-    },
-  });
-  const doc2 = await prisma.doctor.create({
-    data: {
+    });
+  const doc2 = await upsertDoctor({
       userId: doc2User.id,
       hprId: 'HPR-2024-00289',
       name: 'Dr. Priya Mehta',
@@ -144,20 +256,16 @@ async function main() {
       distance: '8.4 km',
       isPreferred: false,
       recommendationReasons: [],
-    },
-  });
+    });
 
   // Doctor 3: Dr. Suresh Gupta (District Hospital Bikaner)
-  const doc3User = await prisma.user.create({
-    data: {
+  const doc3User = await upsertUser({
       phone: '9829000004',
       role: Role.DOCTOR,
       fullName: 'Dr. Suresh Gupta',
       pinHash: defaultPinHash,
-    },
-  });
-  const doc3 = await prisma.doctor.create({
-    data: {
+    });
+  const doc3 = await upsertDoctor({
       userId: doc3User.id,
       hprId: 'HPR-2024-00371',
       name: 'Dr. Suresh Gupta',
@@ -167,83 +275,67 @@ async function main() {
       distance: '14.2 km',
       isPreferred: false,
       recommendationReasons: ['Emergency specialist available'],
-    },
-  });
+    });
 
   // Worker 1: Meena Kumari (ASHA, Govindpur)
-  const worker1User = await prisma.user.create({
-    data: {
+  const worker1User = await upsertUser({
       phone: '9829000005',
       role: Role.WORKER,
       fullName: 'Meena Kumari',
       pinHash: defaultPinHash,
-    },
-  });
-  const worker1 = await prisma.worker.create({
-    data: {
+    });
+  const worker1 = await upsertWorker({
       userId: worker1User.id,
       name: 'Meena Kumari',
       workerType: 'ASHA',
       village: 'Govindpur',
       district: 'Bikaner',
       state: 'Rajasthan',
-    },
-  });
+    });
 
   // Worker 2: Sunita Yadav (ASHA, Khetolai)
-  const worker2User = await prisma.user.create({
-    data: {
+  const worker2User = await upsertUser({
       phone: '9829000006',
       role: Role.WORKER,
       fullName: 'Sunita Yadav',
       pinHash: defaultPinHash,
-    },
-  });
-  const worker2 = await prisma.worker.create({
-    data: {
+    });
+  const worker2 = await upsertWorker({
       userId: worker2User.id,
       name: 'Sunita Yadav',
       workerType: 'ASHA',
       village: 'Khetolai',
       district: 'Bikaner',
       state: 'Rajasthan',
-    },
-  });
+    });
 
   // Worker 3: Raju Singh (Health Worker, Deshnok)
-  const worker3User = await prisma.user.create({
-    data: {
+  const worker3User = await upsertUser({
       phone: '9829000007',
       role: Role.WORKER,
       fullName: 'Raju Singh',
       pinHash: defaultPinHash,
-    },
-  });
-  const worker3 = await prisma.worker.create({
-    data: {
+    });
+  const worker3 = await upsertWorker({
       userId: worker3User.id,
       name: 'Raju Singh',
       workerType: 'Health Worker',
       village: 'Deshnok',
       district: 'Bikaner',
       state: 'Rajasthan',
-    },
-  });
+    });
   console.log('✓ Seeded staff & healthcare worker accounts.');
 
   // 4. Seed Patients
 
   // Patient 1: Priya Devi
-  const pat1User = await prisma.user.create({
-    data: {
+  const pat1User = await upsertUser({
       phone: '9414158392',
       role: Role.PATIENT,
       fullName: 'Priya Devi',
       pinHash: defaultPinHash,
-    },
-  });
-  const pat1 = await prisma.patient.create({
-    data: {
+    });
+  const pat1 = await upsertPatient({
       healthId: 'RHC-2026-8F4K92',
       userId: pat1User.id,
       name: 'Priya Devi',
@@ -268,20 +360,16 @@ async function main() {
       registeredAt: '14 Jan 2026',
       consentStatus: ConsentStatus.GRANTED,
       vaccinationStatus: 'Fully vaccinated',
-    },
-  });
+    });
 
   // Patient 2: Ramesh Kumar
-  const pat2User = await prisma.user.create({
-    data: {
+  const pat2User = await upsertUser({
       phone: '9672944501',
       role: Role.PATIENT,
       fullName: 'Ramesh Kumar',
       pinHash: defaultPinHash,
-    },
-  });
-  const pat2 = await prisma.patient.create({
-    data: {
+    });
+  const pat2 = await upsertPatient({
       healthId: 'RHC-2026-3M9P71',
       userId: pat2User.id,
       name: 'Ramesh Kumar',
@@ -306,20 +394,16 @@ async function main() {
       registeredAt: '03 Mar 2026',
       consentStatus: ConsentStatus.GRANTED,
       vaccinationStatus: 'COVID-19 booster due',
-    },
-  });
+    });
 
   // Patient 3: Sunita Bai
-  const pat3User = await prisma.user.create({
-    data: {
+  const pat3User = await upsertUser({
       phone: '9799928831',
       role: Role.PATIENT,
       fullName: 'Sunita Bai',
       pinHash: defaultPinHash,
-    },
-  });
-  const pat3 = await prisma.patient.create({
-    data: {
+    });
+  const pat3 = await upsertPatient({
       healthId: 'RHC-2026-7X2N44',
       userId: pat3User.id,
       name: 'Sunita Bai',
@@ -344,20 +428,16 @@ async function main() {
       registeredAt: '22 Feb 2026',
       consentStatus: ConsentStatus.GRANTED,
       vaccinationStatus: 'Fully vaccinated',
-    },
-  });
+    });
 
   // Patient 4: Mohan Lal
-  const pat4User = await prisma.user.create({
-    data: {
+  const pat4User = await upsertUser({
       phone: '9462091004',
       role: Role.PATIENT,
       fullName: 'Mohan Lal',
       pinHash: defaultPinHash,
-    },
-  });
-  const pat4 = await prisma.patient.create({
-    data: {
+    });
+  const pat4 = await upsertPatient({
       healthId: 'RHC-2026-2K8Q15',
       userId: pat4User.id,
       name: 'Mohan Lal',
@@ -382,20 +462,16 @@ async function main() {
       registeredAt: '08 Jan 2026',
       consentStatus: ConsentStatus.GRANTED,
       vaccinationStatus: 'Influenza vaccine due',
-    },
-  });
+    });
 
   // Patient 5: Kavita Sharma
-  const pat5User = await prisma.user.create({
-    data: {
+  const pat5User = await upsertUser({
       phone: '9529160772',
       role: Role.PATIENT,
       fullName: 'Kavita Sharma',
       pinHash: defaultPinHash,
-    },
-  });
-  const pat5 = await prisma.patient.create({
-    data: {
+    });
+  const pat5 = await upsertPatient({
       healthId: 'RHC-2026-9R6T83',
       userId: pat5User.id,
       name: 'Kavita Sharma',
@@ -419,13 +495,11 @@ async function main() {
       registeredAt: '15 May 2026',
       consentStatus: ConsentStatus.GRANTED,
       vaccinationStatus: 'Fully vaccinated',
-    },
-  });
+    });
   console.log('✓ Seeded patients.');
 
   // 5. Seed Consultations
-  const con1 = await prisma.consultation.create({
-    data: {
+  const con1 = await upsertConsultation({
       consultationCode: 'CON-2026-001',
       patientId: pat1.id,
       date: '29 Aug 2026',
@@ -444,11 +518,9 @@ async function main() {
       riskLevel: RiskLevel.MODERATE,
       referralStatus: 'completed',
       followUpDate: '28 Sep 2026',
-    },
-  });
+    });
 
-  const con2 = await prisma.consultation.create({
-    data: {
+  const con2 = await upsertConsultation({
       consultationCode: 'CON-2026-002',
       patientId: pat2.id,
       date: '31 Aug 2026',
@@ -459,11 +531,9 @@ async function main() {
       vitals: { temperature: 37.4, bloodPressure: '168/102', heartRate: 108, spo2: 94, weight: 79 },
       riskLevel: RiskLevel.CRITICAL,
       referralStatus: 'pending',
-    },
-  });
+    });
 
-  const con3 = await prisma.consultation.create({
-    data: {
+  const con3 = await upsertConsultation({
       consultationCode: 'CON-2026-003',
       patientId: pat4.id,
       date: '31 Aug 2026',
@@ -474,13 +544,11 @@ async function main() {
       vitals: { temperature: 37.8, bloodPressure: '182/110', heartRate: 118, spo2: 88, respiratoryRate: 28 },
       riskLevel: RiskLevel.CRITICAL,
       referralStatus: 'pending',
-    },
-  });
+    });
   console.log('✓ Seeded consultations.');
 
   // 6. Seed AI Assessments
-  await prisma.aIAssessment.create({
-    data: {
+  await upsertAIAssessment({
       assessmentCode: 'AI-2026-001',
       consultationId: con2.id,
       patientId: pat2.id,
@@ -492,11 +560,9 @@ async function main() {
       recommendedAction: 'Refer patient IMMEDIATELY to PHC Lunkaransar. Administer aspirin 325 mg if no allergy confirmed. Arrange ambulance/transport urgently. Do not delay referral.',
       confidence: 91,
       generatedAt: '31 Aug 2026, 09:47 AM',
-    },
-  });
+    });
 
-  await prisma.aIAssessment.create({
-    data: {
+  await upsertAIAssessment({
       assessmentCode: 'AI-2026-002',
       consultationId: con3.id,
       patientId: pat4.id,
@@ -508,13 +574,11 @@ async function main() {
       recommendedAction: 'EMERGENCY referral to District Hospital Bikaner. Oxygen supplementation (4–6 L/min) if available. Monitor vitals every 5 minutes. Alert receiving facility in advance.',
       confidence: 96,
       generatedAt: '31 Aug 2026, 08:31 AM',
-    },
-  });
+    });
   console.log('✓ Seeded AI assessments.');
 
   // 7. Seed Referrals
-  await prisma.referral.create({
-    data: {
+  await upsertReferral({
       referralCode: 'REF-2026-041',
       patientId: pat2.id,
       patientName: 'Ramesh Kumar',
@@ -528,11 +592,9 @@ async function main() {
       date: '31 Aug 2026',
       priority: ReferralPriority.EMERGENCY,
       aiSummary: 'AI confidence 91% – ACS presentation. Immediate referral recommended.',
-    },
-  });
+    });
 
-  await prisma.referral.create({
-    data: {
+  await upsertReferral({
       referralCode: 'REF-2026-042',
       patientId: pat4.id,
       patientName: 'Mohan Lal',
@@ -546,11 +608,9 @@ async function main() {
       date: '31 Aug 2026',
       priority: ReferralPriority.EMERGENCY,
       aiSummary: 'AI confidence 96% – Critical. Emergency transfer required.',
-    },
-  });
+    });
 
-  await prisma.referral.create({
-    data: {
+  await upsertReferral({
       referralCode: 'REF-2026-038',
       patientId: pat1.id,
       patientName: 'Priya Devi',
@@ -564,12 +624,12 @@ async function main() {
       date: '29 Aug 2026',
       priority: ReferralPriority.ROUTINE,
       aiSummary: 'AI confidence 82% – Moderate anaemia. Dietary + supplementation likely sufficient.',
-    },
-  });
+    });
   console.log('✓ Seeded referrals.');
 
   // 8. Seed Consents
   await prisma.consentArtifact.createMany({
+    skipDuplicates: true,
     data: [
       {
         consentCode: 'CNS-001',
@@ -626,6 +686,7 @@ async function main() {
 
   // 9. Seed Audit Logs
   await prisma.auditLog.createMany({
+    skipDuplicates: true,
     data: [
       {
         auditCode: 'AUD-001',
@@ -681,6 +742,7 @@ async function main() {
 
   // 10. Seed Emergency Access Logs (Break-glass)
   await prisma.emergencyAccessLog.createMany({
+    skipDuplicates: true,
     data: [
       {
         logCode: 'EAL-2026-001',
@@ -741,6 +803,7 @@ async function main() {
 
   // 11. Seed Sync Records
   await prisma.syncRecord.createMany({
+    skipDuplicates: true,
     data: [
       { syncCode: 'SYN-001', type: 'Consultation', description: 'Priya Devi – Consultation 29 Aug', status: SyncStatus.SYNCED, recordedAt: '29 Aug 2026, 10:45 AM', syncedAt: '29 Aug 2026, 11:02 AM' },
       { syncCode: 'SYN-002', type: 'Patient Registration', description: 'New patient – Anita Meena', status: SyncStatus.PENDING, recordedAt: '31 Aug 2026, 07:15 AM' },
@@ -757,6 +820,7 @@ async function main() {
   console.log('🏥 Seeding Mock ABDM Ecosystem (Synthetic registry data)...');
 
   await prisma.mockHFRFacility.createMany({
+    skipDuplicates: true,
     data: [
       // Maharashtra Rural Facilities (Tiers: Sub Centre, PHC, CHC, DH, Diagnostic, Telemedicine)
       {
@@ -1072,6 +1136,7 @@ async function main() {
 
   // Seed Mock HPR Professionals (12 doctors & specialists across medical councils)
   await prisma.mockHPRProfessional.createMany({
+    skipDuplicates: true,
     data: [
       {
         hprId: 'HPR-MH-100201',
@@ -1308,6 +1373,7 @@ async function main() {
 
   // Seed Mock Health Worker Directory (12 ASHA/ANM/CHO operational assignments, distinct from HPR)
   await prisma.mockWorkerDirectory.createMany({
+    skipDuplicates: true,
     data: [
       {
         workerCode: 'WRK-MH-ASHA-001',
@@ -1527,6 +1593,7 @@ async function main() {
 
   // Seed Mock ABHA Profiles (10 synthetic identities, isMock: true, zero fake Aadhaar)
   await prisma.mockABHAProfile.createMany({
+    skipDuplicates: true,
     data: [
       {
         abhaAddress: 'mock-abha-000001@sbx',
@@ -1736,6 +1803,263 @@ async function main() {
     ],
   });
   console.log('✓ Seeded Mock ABHA Profiles (10 synthetic patient identities).');
+
+  // 14. Seed Representative Medicines & Dispensary Inventory
+  console.log('🌱 Seeding dispensary medicines & inventory...');
+  const medicines = [
+    {
+      code: 'MED-THY-25',
+      name: 'Thyronorm 25 mcg',
+      genericName: 'Levothyroxine Sodium',
+      brand: 'Abbott',
+      dosageForm: 'Tablet',
+      strength: '25 mcg',
+      category: 'Endocrine / Thyroid',
+      stock: 420,
+      minStockLevel: 50,
+      isLowStock: false,
+      batch: 'THY2608',
+      expiryDate: '2028-06-30',
+      supplier: 'Rajasthan Medical Services Corp',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 1.45,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-FE-200',
+      name: 'Ferrous Sulphate 200 mg',
+      genericName: 'Dried Ferrous Sulphate',
+      brand: 'Jan Aushadhi',
+      dosageForm: 'Tablet',
+      strength: '200 mg',
+      category: 'Essential Supplement',
+      stock: 850,
+      minStockLevel: 100,
+      isLowStock: false,
+      batch: 'FE2605',
+      expiryDate: '2027-12-31',
+      supplier: 'National Health Mission Depot',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 0.35,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-FA-5',
+      name: 'Folic Acid 5 mg',
+      genericName: 'Folic Acid',
+      brand: 'Jan Aushadhi',
+      dosageForm: 'Tablet',
+      strength: '5 mg',
+      category: 'Supplement / Maternal',
+      stock: 600,
+      minStockLevel: 100,
+      isLowStock: false,
+      batch: 'FA2604',
+      expiryDate: '2028-03-31',
+      supplier: 'National Health Mission Depot',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 0.20,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-MET-500',
+      name: 'Metformin 500 mg',
+      genericName: 'Metformin Hydrochloride',
+      brand: 'Glyciphage',
+      dosageForm: 'Tablet',
+      strength: '500 mg',
+      category: 'Diabetes / Endocrine',
+      stock: 350,
+      minStockLevel: 80,
+      isLowStock: false,
+      batch: 'MET2601',
+      expiryDate: '2027-08-31',
+      supplier: 'Rajasthan Medical Services Corp',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 0.85,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-AML-5',
+      name: 'Amlodipine 5 mg',
+      genericName: 'Amlodipine Besylate',
+      brand: 'Amlong',
+      dosageForm: 'Tablet',
+      strength: '5 mg',
+      category: 'Cardiovascular',
+      stock: 280,
+      minStockLevel: 60,
+      isLowStock: false,
+      batch: 'AML2602',
+      expiryDate: '2027-11-30',
+      supplier: 'Rajasthan Medical Services Corp',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 0.60,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-ASP-75',
+      name: 'Aspirin 75 mg',
+      genericName: 'Acetylsalicylic Acid (Enteric Coated)',
+      brand: 'Ecosprin',
+      dosageForm: 'Tablet',
+      strength: '75 mg',
+      category: 'Cardiovascular / Emergency',
+      stock: 500,
+      minStockLevel: 100,
+      isLowStock: false,
+      batch: 'ASP2603',
+      expiryDate: '2027-10-31',
+      supplier: 'Rajasthan Medical Services Corp',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 0.45,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-TIO-INH',
+      name: 'Tiotropium Inhaler 18 mcg',
+      genericName: 'Tiotropium Bromide Rotacaps',
+      brand: 'Tiova',
+      dosageForm: 'Inhaler',
+      strength: '18 mcg',
+      category: 'Respiratory / COPD',
+      stock: 6,
+      minStockLevel: 15,
+      isLowStock: true,
+      batch: 'TIO2602',
+      expiryDate: '2027-04-30',
+      supplier: 'Bikaner District Warehouse',
+      facilityId: dhBikaner.id,
+      facilityName: 'District Hospital Bikaner',
+      unitPrice: 12.50,
+      availability: 'Low Stock',
+    },
+    {
+      code: 'MED-LOS-50',
+      name: 'Losartan 50 mg',
+      genericName: 'Losartan Potassium',
+      brand: 'Losar',
+      dosageForm: 'Tablet',
+      strength: '50 mg',
+      category: 'Cardiovascular',
+      stock: 190,
+      minStockLevel: 50,
+      isLowStock: false,
+      batch: 'LOS2601',
+      expiryDate: '2027-09-30',
+      supplier: 'Rajasthan Medical Services Corp',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 1.10,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-INS-MIX',
+      name: 'Insulin Mixtard 30/70',
+      genericName: 'Human Insulin 30/70 100 IU/ml',
+      brand: 'Mixtard 30',
+      dosageForm: 'Injection',
+      strength: '100 IU/ml',
+      category: 'Diabetes / Cold Chain',
+      stock: 4,
+      minStockLevel: 10,
+      isLowStock: true,
+      batch: 'INS2609',
+      expiryDate: '2026-12-31',
+      supplier: 'Bikaner District Cold Chain Hub',
+      facilityId: chcBikaner.id,
+      facilityName: 'CHC Bikaner',
+      unitPrice: 18.00,
+      availability: 'Low Stock',
+    },
+    {
+      code: 'MED-PCM-500',
+      name: 'Paracetamol 500 mg',
+      genericName: 'Paracetamol',
+      brand: 'Jan Aushadhi',
+      dosageForm: 'Tablet',
+      strength: '500 mg',
+      category: 'Essential',
+      stock: 1200,
+      minStockLevel: 200,
+      isLowStock: false,
+      batch: 'PCM2607',
+      expiryDate: '2028-05-31',
+      supplier: 'National Health Mission Depot',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 0.18,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-AMX-500',
+      name: 'Amoxicillin 500 mg',
+      genericName: 'Amoxicillin Trihydrate',
+      brand: 'Mox',
+      dosageForm: 'Capsule',
+      strength: '500 mg',
+      category: 'Antibiotic',
+      stock: 320,
+      minStockLevel: 50,
+      isLowStock: false,
+      batch: 'AMX2603',
+      expiryDate: '2027-07-31',
+      supplier: 'Rajasthan Medical Services Corp',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 2.10,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-ORS-S',
+      name: 'Oral Rehydration Salts',
+      genericName: 'WHO Low Osmolarity ORS',
+      brand: 'Electral',
+      dosageForm: 'Sachet',
+      strength: '21.8 g',
+      category: 'Essential / Dehydration',
+      stock: 750,
+      minStockLevel: 150,
+      isLowStock: false,
+      batch: 'ORS2606',
+      expiryDate: '2028-09-30',
+      supplier: 'National Health Mission Depot',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 0.90,
+      availability: 'In Stock',
+    },
+    {
+      code: 'MED-VTC-500',
+      name: 'Vitamin C 500 mg',
+      genericName: 'Ascorbic Acid',
+      brand: 'Limcee',
+      dosageForm: 'Chewable Tablet',
+      strength: '500 mg',
+      category: 'Supplement',
+      stock: 400,
+      minStockLevel: 80,
+      isLowStock: false,
+      batch: 'VTC2601',
+      expiryDate: '2028-01-31',
+      supplier: 'Rajasthan Medical Services Corp',
+      facilityId: phcLunkaransar.id,
+      facilityName: 'PHC Lunkaransar',
+      unitPrice: 0.40,
+      availability: 'In Stock',
+    },
+  ];
+
+  for (const med of medicines) {
+    await upsertMedicine(med);
+  }
+  console.log('✓ Seeded ' + medicines.length + ' medicines into inventory.');
 
   console.log('🎉 Seeding completed successfully!');
 }

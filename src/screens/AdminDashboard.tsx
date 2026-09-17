@@ -1,38 +1,69 @@
+import { useState, useEffect } from 'react';
 import { ADMIN_STATS, DISEASE_TRENDS, PHC_ACTIVITY } from '../data';
 import { StatCard, Card, Icon, SectionHeader } from '../components/shared';
+import { getAdminDashboardData } from '../api/client';
 
 interface Props { navigate: (s: string) => void; isOffline: boolean; }
 
 export default function AdminDashboard({ navigate, isOffline }: Props) {
+  const [stats, setStats] = useState(ADMIN_STATS);
+  const [diseaseTrends, setDiseaseTrends] = useState(DISEASE_TRENDS);
+  const [phcActivity, setPhcActivity] = useState(PHC_ACTIVITY);
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    if (!isOffline) {
+      getAdminDashboardData()
+        .then(data => {
+          if (data?.stats) {
+            setStats(data.stats);
+            if (data.diseaseTrends?.length) setDiseaseTrends(data.diseaseTrends);
+            if (data.phcActivity?.length) setPhcActivity(data.phcActivity);
+            setIsLive(true);
+          }
+        })
+        .catch(() => {
+          setIsLive(false);
+        });
+    }
+  }, [isOffline]);
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+            {isLive && (
+              <span className="px-2 py-0.5 bg-green-100 text-green-800 border border-green-200 rounded-full text-[10px] font-bold">
+                PostgreSQL Live Data
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-500 mt-0.5">Rajiv Singh · District Health Officer, Bikaner · 31 Aug 2026</p>
         </div>
         <div className="flex items-center gap-2">
           <div className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${isOffline ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-green-50 border-green-100 text-green-700'}`}>
             <Icon name={isOffline ? 'wifi_off' : 'check'} size={12} />
-            System: {isOffline ? 'Partial' : 'Operational'}
+            System: {isOffline ? 'Partial (Local)' : 'PostgreSQL Connected'}
           </div>
         </div>
       </div>
 
       {/* Top stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Registered Patients" value={ADMIN_STATS.totalPatients.toLocaleString()} sub={`${ADMIN_STATS.villagesCovered} villages`} icon="users" color="brand" trend="up" />
-        <StatCard label="Active Health Workers" value={ADMIN_STATS.activeWorkers} sub="Across all PHCs" icon="users" color="green" />
-        <StatCard label="Consultations" value={ADMIN_STATS.totalConsultations.toLocaleString()} sub="This month" icon="clipboard" color="purple" trend="up" />
-        <StatCard label="High-risk Cases" value={ADMIN_STATS.highRiskCases} sub="Under monitoring" icon="alert" color="red" />
+        <StatCard label="Registered Patients" value={stats.totalPatients.toLocaleString()} sub={`${stats.villagesCovered} villages`} icon="users" color="brand" trend="up" />
+        <StatCard label="Active Health Workers" value={stats.activeWorkers} sub="Across all PHCs" icon="users" color="green" />
+        <StatCard label="Consultations" value={stats.totalConsultations.toLocaleString()} sub="This month" icon="clipboard" color="purple" trend="up" />
+        <StatCard label="High-risk Cases" value={stats.highRiskCases} sub="Under monitoring" icon="alert" color="red" />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Referrals (Month)" value={ADMIN_STATS.referralsThisMonth} sub="32 completed" icon="share" color="amber" />
-        <StatCard label="Pending Follow-ups" value={ADMIN_STATS.pendingFollowUps} sub="12 overdue" icon="history" color="amber" />
-        <StatCard label="Sync Success Rate" value={`${ADMIN_STATS.syncSuccess}%`} sub="Last 7 days" icon="sync" color="green" />
-        <StatCard label="Villages Covered" value={ADMIN_STATS.villagesCovered} sub="Bikaner district" icon="map_pin" color="brand" />
+        <StatCard label="Referrals (Month)" value={stats.referralsThisMonth} sub="32 completed" icon="share" color="amber" />
+        <StatCard label="Pending Follow-ups" value={stats.pendingFollowUps} sub="12 overdue" icon="history" color="amber" />
+        <StatCard label="Sync Success Rate" value={`${stats.syncSuccess}%`} sub="Last 7 days" icon="sync" color="green" />
+        <StatCard label="Villages Covered" value={stats.villagesCovered} sub="Bikaner district" icon="map_pin" color="brand" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -40,7 +71,7 @@ export default function AdminDashboard({ navigate, isOffline }: Props) {
         <Card className="p-5">
           <SectionHeader title="Common Disease Trends" sub="Most reported conditions this month" />
           <div className="space-y-3 mt-4">
-            {DISEASE_TRENDS.map(d => (
+            {diseaseTrends.map(d => (
               <div key={d.condition} className="space-y-1">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-700 font-medium">{d.condition}</span>
@@ -72,7 +103,7 @@ export default function AdminDashboard({ navigate, isOffline }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {PHC_ACTIVITY.map((phc, i) => (
+                {phcActivity.map((phc, i) => (
                   <tr key={i} className="hover:bg-gray-50">
                     <td className="py-2.5 px-1 font-medium text-gray-800 text-xs">{phc.phc}</td>
                     <td className="py-2.5 px-1 text-right font-mono text-xs text-gray-700">{phc.consultations}</td>
@@ -87,8 +118,8 @@ export default function AdminDashboard({ navigate, isOffline }: Props) {
           <div className="mt-4">
             <div className="text-xs font-semibold text-gray-500 mb-2">Consultations Volume</div>
             <div className="flex items-end gap-2 h-16">
-              {PHC_ACTIVITY.map((phc, i) => {
-                const max = Math.max(...PHC_ACTIVITY.map(p => p.consultations));
+              {phcActivity.map((phc, i) => {
+                const max = Math.max(...phcActivity.map(p => p.consultations), 1);
                 const pct = (phc.consultations / max) * 100;
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1">
@@ -109,8 +140,8 @@ export default function AdminDashboard({ navigate, isOffline }: Props) {
         <SectionHeader title="System Status" sub="Infrastructure & synchronization health" />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: 'Central Server', status: 'Operational', ok: true },
-            { label: 'Database Sync', status: `${ADMIN_STATS.syncSuccess}% success rate`, ok: true },
+            { label: 'Central PostgreSQL', status: isLive ? 'Connected (Port 5432)' : 'Operational', ok: true },
+            { label: 'Database Sync', status: `${stats.syncSuccess}% success rate`, ok: true },
             { label: 'AI Model Service', status: 'v2.1 running', ok: true },
             { label: 'Offline Nodes', status: isOffline ? '3 disconnected' : 'All connected', ok: !isOffline },
           ].map(s => (
@@ -150,7 +181,7 @@ export default function AdminDashboard({ navigate, isOffline }: Props) {
             </div>
           ))}
           <div className="absolute bottom-3 right-3 text-xs text-brand-600 font-medium bg-white/70 px-2 py-1 rounded-lg">
-            {ADMIN_STATS.villagesCovered} villages · {ADMIN_STATS.totalPatients.toLocaleString()} patients
+            {stats.villagesCovered} villages · {stats.totalPatients.toLocaleString()} patients
           </div>
         </div>
       </Card>

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PATIENTS, CONSULTATIONS, REFERRALS, AUDIT_LOG, CONSENT_ENTRIES } from '../data';
 import { RiskBadge, ConsentBadge, HealthIDCard, Tabs, TimelineEntry, Card, Icon, SectionHeader, PermissionBadge } from '../components/shared';
+import { getPatientByHealthId } from '../api/client';
 
 interface Props { navigate: (s: string) => void; }
 
@@ -17,9 +18,57 @@ const PROFILE_TABS = [
 
 export default function PatientProfile({ navigate }: Props) {
   const [activeTab, setActiveTab] = useState('overview');
-  const patient = PATIENTS[0]; // Priya Devi
-  const consultations = CONSULTATIONS.filter(c => c.patientId === patient.id);
-  const referrals = REFERRALS.filter(r => r.patientId === patient.id);
+  const [patient, setPatient] = useState(PATIENTS[0]); // Priya Devi
+  const [consultations, setConsultations] = useState(CONSULTATIONS.filter(c => c.patientId === PATIENTS[0].id));
+  const [referrals, setReferrals] = useState(REFERRALS.filter(r => r.patientId === PATIENTS[0].id));
+
+  useEffect(() => {
+    getPatientByHealthId(PATIENTS[0].id)
+      .then(res => {
+        if (res?.patient) {
+          setPatient({
+            ...PATIENTS[0],
+            ...res.patient,
+            id: res.patient.healthId || res.patient.id,
+          });
+          if (res.consultations?.length) {
+            setConsultations(res.consultations.map((c: any) => ({
+              id: c.consultationCode || c.id,
+              patientId: res.patient.healthId || res.patient.id,
+              date: c.date,
+              time: c.time,
+              workerName: c.workerName,
+              doctorName: c.doctorName,
+              symptoms: c.symptoms || [],
+              vitals: c.vitals || {},
+              diagnosis: c.diagnosis,
+              treatment: c.treatment,
+              prescription: c.prescription || [],
+              notes: c.notes,
+              riskLevel: (c.riskLevel?.toLowerCase() || 'low') as any,
+              referralStatus: (c.referralStatus || 'completed') as any,
+              followUpDate: c.followUpDate,
+            })));
+          }
+          if (res.referrals?.length) {
+            setReferrals(res.referrals.map((r: any) => ({
+              id: r.referralCode || r.id,
+              patientId: res.patient.healthId || res.patient.id,
+              patientName: res.patient.name,
+              fromWorker: r.fromWorkerName,
+              toPHC: r.toFacilityName,
+              reason: r.reason,
+              riskLevel: (r.riskLevel?.toLowerCase() || 'low') as any,
+              status: (r.status?.toLowerCase() || 'pending') as any,
+              date: new Date(r.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+              priority: (r.priority?.toLowerCase() || 'routine') as any,
+              aiSummary: r.aiSummary,
+            })));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const initials = patient.name.split(' ').map(w => w[0]).join('').toUpperCase();
 

@@ -1,13 +1,38 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AI_ASSESSMENTS, PATIENTS } from '../data';
 import { RiskBadge, Card, AIDisclaimer, Icon } from '../components/shared';
+import { getAiAssessments } from '../api/client';
 
 interface Props { navigate: (s: string) => void; }
 
 export default function AIRiskAssessment({ navigate }: Props) {
+  const [assessments, setAssessments] = useState(AI_ASSESSMENTS);
   const [activeCase, setActiveCase] = useState(0);
-  const assessment = AI_ASSESSMENTS[activeCase];
-  const patient = PATIENTS.find(p => p.id === assessment.patientId)!;
+
+  useEffect(() => {
+    getAiAssessments()
+      .then(items => {
+        if (items && items.length > 0) {
+          setAssessments(items.map((a: any) => ({
+            id: a.assessmentCode || a.id,
+            consultationId: a.consultationId,
+            patientId: a.patient?.healthId || a.patientId,
+            riskLevel: (a.riskLevel?.toLowerCase() || 'moderate') as any,
+            symptomsConsidered: a.symptomsConsidered || [],
+            abnormalVitals: a.abnormalVitals || [],
+            riskFactors: a.riskFactors || [],
+            reasoning: a.reasoning,
+            recommendedAction: a.recommendedAction,
+            confidence: a.confidence || 85,
+            generatedAt: new Date(a.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+          })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const assessment = assessments[activeCase] || AI_ASSESSMENTS[0];
+  const patient = PATIENTS.find(p => p.id === assessment.patientId) || PATIENTS[0];
 
   const riskColors = {
     low: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-800', icon: 'bg-green-100', ring: 'ring-green-300' },

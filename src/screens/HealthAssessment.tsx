@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon, Card, HealthIDCard } from '../components/shared';
+import { createConsultation } from '../api/client';
 
 interface Props { navigate: (s: string) => void; }
 
@@ -255,7 +256,23 @@ export default function HealthAssessment({ navigate }: Props) {
               if (step === 'patient') setStep('vitals');
               else if (step === 'vitals') setStep('symptoms');
               else if (step === 'symptoms') setStep('review');
-              else navigate('ai-risk');
+              else {
+                createConsultation({
+                  patientId: 'RHC-2026-8F4K92',
+                  workerName: 'Meena Kumari (ASHA)',
+                  symptoms: selectedSymptoms,
+                  vitals: {
+                    temperature: vitals.temp,
+                    bloodPressure: vitals.bp,
+                    heartRate: vitals.hr,
+                    spo2: vitals.spo2,
+                    weight: vitals.weight,
+                  },
+                  notes: obs,
+                  riskLevel: (isAbnormal('temp', vitals.temp) || isAbnormal('hr', vitals.hr) || isAbnormal('spo2', vitals.spo2)) ? 'high' : 'moderate',
+                }).catch(() => {});
+                navigate('ai-risk');
+              }
             }}
             className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
             {step === 'review' ? (
