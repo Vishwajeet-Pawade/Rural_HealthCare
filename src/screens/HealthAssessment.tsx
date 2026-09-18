@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Icon, Card, HealthIDCard } from '../components/shared';
 import { createConsultation, getPatients, getCurrentUser } from '../api/client';
+import { saveOfflineConsultation } from '../services/syncEngine';
 
 interface Props { navigate: (s: string) => void; }
 
@@ -67,23 +68,54 @@ export default function HealthAssessment({ navigate }: Props) {
     if (step === 'symptoms') { setStep('review'); return; }
 
     setSubmitting(true);
+
+    const payload = {
+      patientId: selectedPatient?.healthId || selectedPatient?.id,
+      workerName: dbUser?.fullName || dbUser?.workerProfile?.name || 'Health Worker',
+      symptoms: selectedSymptoms,
+      vitals: {
+        temperature: vitals.temp,
+        bloodPressure: vitals.bp,
+        heartRate: vitals.hr,
+        spo2: vitals.spo2,
+        weight: vitals.weight,
+      },
+      notes: obs,
+      riskLevel: (isAbnormal('temp', vitals.temp) || isAbnormal('hr', vitals.hr) || isAbnormal('spo2', vitals.spo2)) ? ('high' as const) : ('moderate' as const),
+    };
+
+    const isDeviceOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+    if (isDeviceOffline) {
+      try {
+        await saveOfflineConsultation(payload);
+      } catch (offlineErr) {
+        console.error('Failed to save consultation offline:', offlineErr);
+      } finally {
+        setSubmitting(false);
+        navigate('ai-risk');
+      }
+      return;
+    }
+
     try {
-      await createConsultation({
-        patientId: selectedPatient?.healthId || selectedPatient?.id,
-        workerName: dbUser?.fullName || dbUser?.workerProfile?.name || 'Health Worker',
-        symptoms: selectedSymptoms,
-        vitals: {
-          temperature: vitals.temp,
-          bloodPressure: vitals.bp,
-          heartRate: vitals.hr,
-          spo2: vitals.spo2,
-          weight: vitals.weight,
-        },
-        notes: obs,
-        riskLevel: (isAbnormal('temp', vitals.temp) || isAbnormal('hr', vitals.hr) || isAbnormal('spo2', vitals.spo2)) ? 'high' : 'moderate',
-      });
-    } catch (e) {
-      console.error(e);
+      await createConsultation(payload);
+    } catch (e: any) {
+      console.error('Online consultation request failed:', e);
+      const isNetworkError =
+        (typeof navigator !== 'undefined' && !navigator.onLine) ||
+        e.name === 'TypeError' ||
+        e.message?.includes('Network error') ||
+        e.message?.includes('Failed to fetch') ||
+        e.message?.includes('network');
+
+      if (isNetworkError) {
+        try {
+          await saveOfflineConsultation(payload);
+        } catch (offlineErr) {
+          console.error('Failed to fallback save consultation offline:', offlineErr);
+        }
+      }
     } finally {
       setSubmitting(false);
       navigate('ai-risk');
@@ -100,6 +132,12 @@ export default function HealthAssessment({ navigate }: Props) {
           <h1 className="font-display text-xl font-bold text-gray-900">New Health Assessment</h1>
           <p className="text-xs text-gray-500">Guided assessment with AI-assisted risk evaluation</p>
         </div>
+        {typeof navigator !== 'undefined' && !navigator.onLine && (
+          <div className="ml-auto px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 font-semibold flex items-center gap-1">
+            <Icon name="wifi_off" size={11} />
+            Offline
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 mb-8">
@@ -285,6 +323,12 @@ export default function HealthAssessment({ navigate }: Props) {
                 <strong>AI Risk Assessment</strong> will be automatically generated based on vitals, symptoms, and patient history.
               </div>
             </div>
+            {typeof navigator !== 'undefined' && !navigator.onLine && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                <Icon name="wifi_off" size={14} className="shrink-0 text-amber-700" />
+                <span>Operating offline. Consultation will be saved to local offline database and synced when connectivity returns.</span>
+              </div>
+            )}
           </div>
         )}
 

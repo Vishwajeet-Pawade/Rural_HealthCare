@@ -1,4 +1,7 @@
+import { useState, useEffect } from 'react';
 import { Icon, Card, SectionHeader } from '../components/shared';
+import { syncEngine } from '../services/syncEngine';
+import type { OutboxItem } from '../services/offlineDb';
 
 interface Props { navigate: (s: string) => void; isOffline: boolean; toggleOffline: () => void; }
 
@@ -22,6 +25,50 @@ const PENDING_ITEMS = [
 ];
 
 export default function OfflineMode({ navigate, isOffline, toggleOffline }: Props) {
+  const [pendingCount, setPendingCount] = useState(0);
+  const [outboxItems, setOutboxItems] = useState<OutboxItem[]>([]);
+  const [syncing, setSyncing] = useState(false);
+
+  async function refreshOutbox() {
+    try {
+      const count = await syncEngine.getPendingCount();
+      const items = await syncEngine.getPendingItems();
+      setPendingCount(count);
+      setOutboxItems(items);
+    } catch (err) {
+      console.error('Failed to query outbox queue:', err);
+    }
+  }
+
+  useEffect(() => {
+    refreshOutbox();
+    const unsubscribe = syncEngine.subscribe(refreshOutbox);
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  async function handleSyncNow() {
+    if (isOffline || syncing) return;
+    setSyncing(true);
+    try {
+      await syncEngine.flushOutbox();
+      await refreshOutbox();
+    } catch (err) {
+      console.error('Failed to flush outbox:', err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  const displayedItems = outboxItems.length > 0
+    ? outboxItems.map(item => ({
+        type: item.action === 'CREATE_PATIENT' ? 'Patient Registration' : item.action === 'CREATE_CONSULTATION' ? 'Consultation' : item.action,
+        desc: item.payload?.name ? `${item.payload.name} (Offline)` : item.payload?.patientId ? `Consultation for ${item.payload.patientId}` : `Queued offline ${item.action}`,
+        time: new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }))
+    : [];
+
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
@@ -48,13 +95,23 @@ export default function OfflineMode({ navigate, isOffline, toggleOffline }: Prop
           </div>
           <div className="flex items-center justify-between mt-3 p-3 bg-amber-100 rounded-xl">
             <div>
-              <div className="text-sm font-semibold text-amber-900">📋 Pending Sync: {PENDING_ITEMS.length} records</div>
+              <div className="text-sm font-semibold text-amber-900">📋 Pending Sync: {pendingCount} records</div>
               <div className="text-xs text-amber-700 mt-0.5">Will sync automatically when connectivity is restored</div>
             </div>
-            <button onClick={() => navigate('sync')}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl text-xs transition-colors">
-              View
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSyncNow}
+                disabled={isOffline || syncing}
+                className="px-3 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+              >
+                <Icon name="sync" size={12} className={syncing ? 'animate-spin' : ''} />
+                {syncing ? 'Syncing...' : 'Sync Now'}
+              </button>
+              <button onClick={() => navigate('sync')}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl text-xs transition-colors">
+                View
+              </button>
+            </div>
           </div>
           <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
             <Icon name="history" size={11} />
@@ -63,14 +120,28 @@ export default function OfflineMode({ navigate, isOffline, toggleOffline }: Prop
         </div>
       ) : (
         <div className="rounded-2xl bg-green-50 border-2 border-green-200 p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center">
-              <Icon name="check" size={24} className="text-green-600" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center">
+                <Icon name="check" size={24} className="text-green-600" />
+              </div>
+              <div>
+                <div className="font-display text-xl font-bold text-green-800">
+                  {pendingCount === 0 ? 'All records synchronized ✓' : `${pendingCount} records pending sync`}
+                </div>
+                <div className="text-xs text-green-600">
+                  {pendingCount === 0 ? 'Last sync: Today, 08:00 AM · Connected to server' : 'Connected to server · Ready to sync'}
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="font-display text-xl font-bold text-green-800">All records synchronized ✓</div>
-              <div className="text-xs text-green-600">Last sync: Today, 08:00 AM · Connected to server</div>
-            </div>
+            <button
+              onClick={handleSyncNow}
+              disabled={syncing}
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+            >
+              <Icon name="sync" size={13} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Syncing...' : 'Sync Now'}
+            </button>
           </div>
         </div>
       )}
@@ -114,21 +185,37 @@ export default function OfflineMode({ navigate, isOffline, toggleOffline }: Prop
         {/* Pending items */}
         <div className="space-y-4">
           <Card className={`p-5 ${isOffline ? 'border-amber-200' : ''}`}>
-            <SectionHeader title={`Pending Sync (${PENDING_ITEMS.length})`} sub={isOffline ? 'Waiting for connectivity' : 'Ready to sync'} />
+            <div className="flex items-center justify-between mb-2">
+              <SectionHeader title={`Pending Sync (${pendingCount})`} sub={isOffline ? 'Waiting for connectivity' : 'Ready to sync'} />
+              <button
+                onClick={handleSyncNow}
+                disabled={isOffline || syncing}
+                className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+              >
+                <Icon name="sync" size={12} className={syncing ? 'animate-spin' : ''} />
+                {syncing ? 'Syncing...' : 'Sync Now'}
+              </button>
+            </div>
             <div className="space-y-2">
-              {PENDING_ITEMS.map((item, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
-                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${isOffline ? 'bg-amber-500' : 'bg-brand-500'}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-semibold text-gray-700">{item.type}</div>
-                    <div className="text-xs text-gray-500 truncate">{item.desc}</div>
-                    <div className="font-mono text-[10px] text-gray-400">{item.time}</div>
+              {displayedItems.length > 0 ? (
+                displayedItems.map((item, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                    <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${isOffline ? 'bg-amber-500' : 'bg-brand-500'}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-gray-700">{item.type}</div>
+                      <div className="text-xs text-gray-500 truncate">{item.desc}</div>
+                      <div className="font-mono text-[10px] text-gray-400">{item.time}</div>
+                    </div>
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${isOffline ? 'bg-amber-50 text-amber-700' : 'bg-brand-50 text-brand-700'}`}>
+                      {isOffline ? 'Pending ↻' : 'Queued'}
+                    </span>
                   </div>
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${isOffline ? 'bg-amber-50 text-amber-700' : 'bg-brand-50 text-brand-700'}`}>
-                    {isOffline ? 'Pending ↻' : 'Queued'}
-                  </span>
+                ))
+              ) : (
+                <div className="p-4 text-center text-xs text-gray-500 bg-gray-50 rounded-xl">
+                  No pending records in outbox queue
                 </div>
-              ))}
+              )}
             </div>
           </Card>
 

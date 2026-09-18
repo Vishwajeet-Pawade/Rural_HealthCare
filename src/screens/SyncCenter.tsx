@@ -1,25 +1,66 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SYNC_RECORDS } from '../data';
 import { SyncBadge, Card, Icon, SectionHeader } from '../components/shared';
+import { syncEngine } from '../services/syncEngine';
+import type { OutboxItem } from '../services/offlineDb';
+import type { SyncRecord } from '../types';
 
 interface Props { navigate: (s: string) => void; isOffline: boolean; }
 
 export default function SyncCenter({ navigate, isOffline }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [records, setRecords] = useState(SYNC_RECORDS);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [outboxItems, setOutboxItems] = useState<OutboxItem[]>([]);
+
+  async function refreshOutbox() {
+    try {
+      const count = await syncEngine.getPendingCount();
+      const items = await syncEngine.getPendingItems();
+      setPendingCount(count);
+      setOutboxItems(items);
+    } catch (err) {
+      console.error('Failed to query outbox queue:', err);
+    }
+  }
+
+  useEffect(() => {
+    refreshOutbox();
+    const unsubscribe = syncEngine.subscribe(refreshOutbox);
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  async function handleSyncNow() {
+    if (isOffline || syncing) return;
+    setSyncing(true);
+    try {
+      await syncEngine.flushOutbox();
+      await refreshOutbox();
+    } catch (err) {
+      console.error('Failed to flush outbox:', err);
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   function retrySyncing() {
-    if (isOffline) return;
-    setSyncing(true);
-    setTimeout(() => {
-      setRecords(prev => prev.map(r => r.status === 'failed' ? { ...r, status: 'pending' as const } : r));
-      setSyncing(false);
-    }, 2000);
+    handleSyncNow();
   }
 
   const synced = records.filter(r => r.status === 'synced');
-  const pending = records.filter(r => r.status === 'pending');
   const failed = records.filter(r => r.status === 'failed');
+
+  const outboxRecords: SyncRecord[] = outboxItems.map(item => ({
+    id: `queue-${item.id}`,
+    type: item.action === 'CREATE_PATIENT' ? 'Patient Registration' : item.action === 'CREATE_CONSULTATION' ? 'Consultation' : item.action,
+    description: item.payload?.name ? `${item.payload.name} (Offline outbox)` : item.payload?.patientId ? `Consultation for ${item.payload.patientId} (Offline outbox)` : `Offline ${item.action}`,
+    status: 'pending',
+    recordedAt: new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  }));
+
+  const allRecords = [...outboxRecords, ...records];
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
@@ -59,7 +100,7 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: 'Synced ✓', count: synced.length, color: 'bg-green-100 text-green-800' },
-              { label: 'Pending ↻', count: pending.length, color: 'bg-amber-100 text-amber-800' },
+              { label: 'Pending ↻', count: pendingCount, color: 'bg-amber-100 text-amber-800' },
               { label: 'Failed !', count: failed.length, color: 'bg-red-100 text-red-800' },
             ].map(s => (
               <div key={s.label} className={`p-3 rounded-xl text-center ${s.color}`}>
@@ -73,7 +114,7 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
 
       {/* Action buttons */}
       <div className="flex gap-3">
-        <button onClick={retrySyncing} disabled={isOffline || syncing}
+        <button onClick={handleSyncNow} disabled={isOffline || syncing}
           className="flex-1 flex items-center justify-center gap-2 py-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold rounded-xl text-sm transition-colors">
           <Icon name="sync" size={16} className={syncing ? 'animate-spin' : ''} />
           {syncing ? 'Syncing...' : 'Sync Now'}
@@ -99,10 +140,10 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
       {/* Records list */}
       <Card>
         <div className="px-5 pt-5">
-          <SectionHeader title="Sync Records" sub={`${records.length} total records`} />
+          <SectionHeader title="Sync Records" sub={`${allRecords.length} total records (${pendingCount} pending in outbox)`} />
         </div>
         <div className="divide-y divide-gray-50">
-          {records.map(record => (
+          {allRecords.map(record => (
             <div key={record.id} className="px-5 py-3 flex items-start gap-3">
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${record.status === 'synced' ? 'bg-green-50' : record.status === 'failed' ? 'bg-red-50' : 'bg-amber-50'}`}>
                 <Icon name={record.status === 'synced' ? 'check' : record.status === 'failed' ? 'alert' : 'sync'} size={14}

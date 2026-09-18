@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon, HealthIDCard } from '../components/shared';
 import { patients, getToken } from '../imports/api';
+import { saveOfflinePatient } from '../services/syncEngine';
 
 interface Props { navigate: (s: string) => void; isOffline: boolean; }
 
@@ -16,6 +17,7 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
   });
   const [generatedId, setGeneratedId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavedOffline, setIsSavedOffline] = useState(false);
   const [error, setError] = useState('');
 
   function update(key: string, val: string) { setForm(f => ({ ...f, [key]: val })); }
@@ -27,34 +29,70 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
     }
     setIsSubmitting(true);
     setError('');
+
+    const payload = {
+      name: form.name,
+      nameHi: form.nameHi,
+      dob: form.dob,
+      gender: form.gender,
+      bloodGroup: form.blood,
+      phone: form.phone,
+      village: form.village,
+      district: form.district,
+      state: form.state,
+      address: form.address,
+      emergencyContact: {
+        name: form.emergencyName,
+        relation: form.emergencyRelation,
+        phone: form.emergencyPhone
+      },
+      allergies: form.allergies ? form.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
+      chronicConditions: form.conditions ? form.conditions.split(',').map(s => s.trim()).filter(Boolean) : [],
+      currentMedications: form.medications ? form.medications.split(',').map(s => s.trim()).filter(Boolean) : [],
+    };
+
+    const isDeviceOffline = isOffline || (typeof navigator !== 'undefined' && !navigator.onLine);
+
+    if (isDeviceOffline) {
+      try {
+        const offlinePatient = await saveOfflinePatient(payload);
+        setGeneratedId(offlinePatient.id);
+        setIsSavedOffline(true);
+        setStep(3); // success
+      } catch (err: any) {
+        setError(err.message || 'Failed to save patient offline');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     try {
-      const payload = {
-        name: form.name,
-        nameHi: form.nameHi,
-        dob: form.dob,
-        gender: form.gender,
-        bloodGroup: form.blood,
-        phone: form.phone,
-        village: form.village,
-        district: form.district,
-        state: form.state,
-        address: form.address,
-        emergencyContact: {
-          name: form.emergencyName,
-          relation: form.emergencyRelation,
-          phone: form.emergencyPhone
-        },
-        allergies: form.allergies ? form.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
-        chronicConditions: form.conditions ? form.conditions.split(',').map(s => s.trim()).filter(Boolean) : [],
-        currentMedications: form.medications ? form.medications.split(',').map(s => s.trim()).filter(Boolean) : [],
-      };
-      
       const res = await patients.register(payload, getToken() || undefined);
       if(res?.data?.patient?.healthId) {
         setGeneratedId(res.data.patient.healthId);
         setStep(3); // success
       }
     } catch(err: any) {
+      const isNetworkError =
+        (typeof navigator !== 'undefined' && !navigator.onLine) ||
+        err.name === 'TypeError' ||
+        err.message?.includes('Failed to fetch') ||
+        err.message?.includes('NetworkError') ||
+        err.message?.includes('network');
+
+      if (isNetworkError) {
+        try {
+          const offlinePatient = await saveOfflinePatient(payload);
+          setGeneratedId(offlinePatient.id);
+          setIsSavedOffline(true);
+          setStep(3); // success
+          return;
+        } catch (saveErr: any) {
+          setError(saveErr.message || 'Failed to save patient offline');
+          return;
+        }
+      }
       setError(err.message || 'Failed to register patient');
     } finally {
       setIsSubmitting(false);
@@ -240,14 +278,14 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
             </div>
             <div>
               <h2 className="font-display text-xl font-bold text-gray-900">Registration Successful!</h2>
-              <p className="text-sm text-gray-500 mt-1">Anita Meena has been registered in the system.</p>
+              <p className="text-sm text-gray-500 mt-1">{form.name || 'Anita Meena'} has been registered in the system.</p>
             </div>
 
             <div className="flex justify-center">
-              <HealthIDCard id={generatedId} name="Anita Meena" size="lg" />
+              <HealthIDCard id={generatedId} name={form.name || 'Anita Meena'} size="lg" />
             </div>
 
-            {isOffline && (
+            {(isOffline || isSavedOffline) && (
               <div className="flex items-center justify-center gap-2 text-xs text-amber-700 bg-amber-50 rounded-xl px-4 py-2.5 border border-amber-200">
                 <Icon name="wifi_off" size={13} />
                 Record saved locally. Will sync when connectivity is restored.
