@@ -946,3 +946,67 @@ export async function getPatientDashboardData(
 
   return res.data;
 }
+
+// ─── Emergency & Break-Glass (T3 Tier) ──────────────────────────────────────
+
+export interface AuthorizeEmergencyPayload {
+  patientId?: string;
+  patientHealthId: string;
+  patientName: string;
+  doctorId?: string;
+  doctorName: string;
+  facilityId?: string;
+  facilityName: string;
+  reason: string;
+  note: string;
+  records?: string;
+}
+
+export async function authorizeEmergency(
+  payload: AuthorizeEmergencyPayload
+): Promise<{ token: string; expiresInSeconds: number; log: any }> {
+  const res = await request<ApiResponse<any>>('/emergency/authorize', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  return res.data;
+}
+
+export async function getEmergencyLogs(): Promise<any[]> {
+  const res = await request<ApiResponse<any[]>>('/emergency/logs');
+  return res.data || [];
+}
+
+export interface DispatchSosPayload {
+  fromName: string;
+  role: string;
+  senderId?: string;
+  patientId?: string;
+  patientHealthId: string;
+  location: string;
+  targetedDoctorId?: string;
+}
+
+export async function dispatchSosAlert(payload: DispatchSosPayload): Promise<any> {
+  const res = await request<ApiResponse<any>>('/emergency/sos', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  return res.data;
+}
+
+export async function getActiveSosAlerts(): Promise<any[]> {
+  const res = await request<ApiResponse<any[]>>('/emergency/sos/active');
+  return res.data || [];
+}
+
+export async function updateSosStatus(id: string, status: string, respondingDoctorId?: string): Promise<any> {
+  const res = await request<ApiResponse<any>>(`/emergency/sos/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, respondingDoctorId }),
+  });
+
+  return res.data;
+}
