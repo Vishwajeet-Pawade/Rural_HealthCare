@@ -1034,6 +1034,9 @@ export default function App() {
               navigate={
                 navigate
               }
+              patientId={
+                selectedPatientId
+              }
             />
           )}
 
