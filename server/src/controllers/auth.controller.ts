@@ -63,7 +63,7 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().min(1, 'Email or phone number is required'),
   password: z.string(),
   role: z.enum([
     'WORKER',
@@ -450,9 +450,15 @@ export async function login(
       role,
     } = loginSchema.parse(req.body);
 
+    const identifier = email.trim();
     const user =
-      await prisma.user.findUnique({
-        where: { email },
+      await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: identifier.toLowerCase() },
+            { phone: identifier },
+          ],
+        },
 
         include: {
           doctorProfile: {
