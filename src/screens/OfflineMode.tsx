@@ -28,6 +28,8 @@ export default function OfflineMode({ navigate, isOffline, toggleOffline }: Prop
   const [pendingCount, setPendingCount] = useState(0);
   const [outboxItems, setOutboxItems] = useState<OutboxItem[]>([]);
   const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
 
   async function refreshOutbox() {
     try {
@@ -51,18 +53,33 @@ export default function OfflineMode({ navigate, isOffline, toggleOffline }: Prop
   async function handleSyncNow() {
     if (isOffline || syncing) return;
     setSyncing(true);
+    setSyncError(null);
+    setSyncSuccess(null);
     try {
-      await syncEngine.flushOutbox();
+      const res = await syncEngine.flushOutbox();
       await refreshOutbox();
-    } catch (err) {
-      console.error('Failed to flush outbox:', err);
+      if (res.success && res.processed > 0) {
+        setSyncSuccess(`Synchronized ${res.processed} record${res.processed > 1 ? 's' : ''} successfully!`);
+        setTimeout(() => setSyncSuccess(null), 4000);
+      } else if (res.errors > 0) {
+        setSyncError(res.lastError || 'Sync failed for 1 or more records. Please retry.');
+      }
+    } catch (err: any) {
+      setSyncError(err.message || 'Failed to flush outbox');
     } finally {
       setSyncing(false);
     }
   }
 
+  async function handleRemoveItem(id?: number) {
+    if (id === undefined) return;
+    await syncEngine.removeOutboxItem(id);
+    await refreshOutbox();
+  }
+
   const displayedItems = outboxItems.length > 0
     ? outboxItems.map(item => ({
+        id: item.id,
         type: item.action === 'CREATE_PATIENT' ? 'Patient Registration' : item.action === 'CREATE_CONSULTATION' ? 'Consultation' : item.action,
         desc: item.payload?.name ? `${item.payload.name} (Offline)` : item.payload?.patientId ? `Consultation for ${item.payload.patientId}` : `Queued offline ${item.action}`,
         time: new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -146,13 +163,46 @@ export default function OfflineMode({ navigate, isOffline, toggleOffline }: Prop
         </div>
       )}
 
+      {/* Sync notification banners */}
+      {syncSuccess && (
+        <div className="p-3.5 bg-green-50 border border-green-200 rounded-xl text-xs text-green-800 flex items-center justify-between font-medium">
+          <div className="flex items-center gap-2">
+            <Icon name="check" size={15} className="text-green-600 shrink-0" />
+            <span>{syncSuccess}</span>
+          </div>
+          <button onClick={() => setSyncSuccess(null)} className="text-green-600 hover:text-green-800 text-xs font-semibold">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {syncError && (
+        <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-center justify-between font-medium">
+          <div className="flex items-center gap-2">
+            <Icon name="alert" size={15} className="text-red-600 shrink-0" />
+            <span>{syncError}</span>
+          </div>
+          <button onClick={() => setSyncError(null)} className="text-red-600 hover:text-red-800 text-xs font-semibold">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Demo toggle */}
       <div className="flex items-center justify-between p-4 bg-gray-100 rounded-2xl">
         <div>
           <div className="text-sm font-semibold text-gray-700">Simulate Offline Mode</div>
           <div className="text-xs text-gray-500">Demo only — toggle to preview offline experience</div>
         </div>
-        <button onClick={toggleOffline}
+        <button
+          onClick={() => {
+            toggleOffline();
+            if (isOffline) {
+              setTimeout(() => {
+                syncEngine.flushOutbox().then(refreshOutbox).catch(() => {});
+              }, 250);
+            }
+          }}
           className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${isOffline ? 'bg-amber-500' : 'bg-gray-300'}`}>
           <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${isOffline ? 'translate-x-7' : 'translate-x-1'}`} />
         </button>
@@ -199,16 +249,27 @@ export default function OfflineMode({ navigate, isOffline, toggleOffline }: Prop
             <div className="space-y-2">
               {displayedItems.length > 0 ? (
                 displayedItems.map((item, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                  <div key={item.id ?? i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
                     <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${isOffline ? 'bg-amber-500' : 'bg-brand-500'}`} />
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-semibold text-gray-700">{item.type}</div>
                       <div className="text-xs text-gray-500 truncate">{item.desc}</div>
                       <div className="font-mono text-[10px] text-gray-400">{item.time}</div>
                     </div>
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${isOffline ? 'bg-amber-50 text-amber-700' : 'bg-brand-50 text-brand-700'}`}>
-                      {isOffline ? 'Pending ↻' : 'Queued'}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${isOffline ? 'bg-amber-50 text-amber-700' : 'bg-brand-50 text-brand-700'}`}>
+                        {isOffline ? 'Pending ↻' : 'Queued'}
+                      </span>
+                      {item.id !== undefined && (
+                        <button
+                          onClick={() => handleRemoveItem(item.id)}
+                          title="Remove from queue"
+                          className="w-5 h-5 rounded hover:bg-gray-200 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors"
+                        >
+                          <Icon name="x" size={11} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))
               ) : (

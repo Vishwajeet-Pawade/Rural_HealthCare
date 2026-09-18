@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Icon, HealthIDCard } from '../components/shared';
 import { patients, getToken } from '../imports/api';
-import { saveOfflinePatient } from '../services/syncEngine';
+import { saveOfflinePatient, syncEngine } from '../services/syncEngine';
 
 interface Props { navigate: (s: string) => void; isOffline: boolean; }
 
@@ -22,7 +22,7 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
 
   function update(key: string, val: string) { setForm(f => ({ ...f, [key]: val })); }
 
-  async function handleSubmit() {
+  async function handleSubmit(forceOffline = false) {
     if(!form.allergies.trim() || !form.conditions.trim() || !form.medications.trim()) {
       setError("Please fill out all mandatory medical info. Enter 'None' if applicable.");
       return;
@@ -30,22 +30,25 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
     setIsSubmitting(true);
     setError('');
 
-    const payload = {
-      name: form.name,
-      nameHi: form.nameHi,
+    const cleanPhone = form.phone.replace(/\D/g, '').slice(-10);
+    const cleanEmergencyPhone = form.emergencyPhone.replace(/\D/g, '').slice(-10);
+    const hasValidEmergency = Boolean(
+      form.emergencyName.trim().length >= 2 &&
+      form.emergencyRelation.trim() &&
+      cleanEmergencyPhone.length === 10
+    );
+
+    const payload: any = {
+      name: form.name.trim(),
+      nameHi: form.nameHi?.trim() || undefined,
       dob: form.dob,
       gender: form.gender,
-      bloodGroup: form.blood,
-      phone: form.phone,
-      village: form.village,
-      district: form.district,
-      state: form.state,
-      address: form.address,
-      emergencyContact: {
-        name: form.emergencyName,
-        relation: form.emergencyRelation,
-        phone: form.emergencyPhone
-      },
+      bloodGroup: form.blood || 'Not known',
+      phone: cleanPhone,
+      village: form.village.trim(),
+      district: form.district.trim(),
+      state: form.state.trim(),
+      address: form.address?.trim() || undefined,
       allergies: form.allergies ? form.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
       chronicConditions: form.conditions ? form.conditions.split(',').map(s => s.trim()).filter(Boolean) : [],
       currentMedications: form.medications ? form.medications.split(',').map(s => s.trim()).filter(Boolean) : [],
@@ -54,7 +57,15 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
       },
     };
 
-    const isDeviceOffline = isOffline || (typeof navigator !== 'undefined' && !navigator.onLine);
+    if (hasValidEmergency) {
+      payload.emergencyContact = {
+        name: form.emergencyName.trim(),
+        relation: form.emergencyRelation.trim(),
+        phone: cleanEmergencyPhone,
+      };
+    }
+
+    const isDeviceOffline = forceOffline || isOffline || !syncEngine.isOnline();
 
     if (isDeviceOffline) {
       try {
@@ -74,11 +85,12 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
       const res = await patients.register(payload, getToken() || undefined);
       if(res?.data?.patient?.healthId) {
         setGeneratedId(res.data.patient.healthId);
+        setIsSavedOffline(false);
         setStep(3); // success
       }
     } catch(err: any) {
       const isNetworkError =
-        (typeof navigator !== 'undefined' && !navigator.onLine) ||
+        !syncEngine.isOnline() ||
         err.name === 'TypeError' ||
         err.message?.includes('Failed to fetch') ||
         err.message?.includes('NetworkError') ||
@@ -116,10 +128,15 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
           <h1 className="font-display text-xl font-bold text-gray-900">Register New Patient</h1>
           <p className="text-xs text-gray-500">Create a secure longitudinal health record</p>
         </div>
-        {isOffline && (
+        {isOffline ? (
           <div className="ml-auto px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 font-semibold flex items-center gap-1">
             <Icon name="wifi_off" size={11} />
-            Offline
+            Offline Mode
+          </div>
+        ) : (
+          <div className="ml-auto px-2 py-1 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 font-semibold flex items-center gap-1">
+            <Icon name="check" size={11} />
+            Online Mode
           </div>
         )}
       </div>
@@ -288,10 +305,26 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
               <HealthIDCard id={generatedId} name={form.name || 'Anita Meena'} size="lg" />
             </div>
 
-            {(isOffline || isSavedOffline) && (
-              <div className="flex items-center justify-center gap-2 text-xs text-amber-700 bg-amber-50 rounded-xl px-4 py-2.5 border border-amber-200">
-                <Icon name="wifi_off" size={13} />
-                Record saved locally. Will sync when connectivity is restored.
+            {(isOffline || isSavedOffline) ? (
+              <div className="flex flex-col items-center gap-2 text-xs text-amber-800 bg-amber-50 rounded-xl p-4 border border-amber-200">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Icon name="wifi_off" size={14} />
+                  Record saved locally to Dexie offline queue (1 pending sync)
+                </div>
+                <p className="text-amber-700 text-center">
+                  This record is now queued in IndexedDB. Go to Offline Mode or Sync Center to see the 1 pending record and click &quot;Sync Now&quot;.
+                </p>
+                <button
+                  onClick={() => navigate('offline')}
+                  className="mt-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-medium transition-colors text-xs"
+                >
+                  Go to Offline Mode &amp; Sync
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2 text-xs text-green-700 bg-green-50 rounded-xl px-4 py-2.5 border border-green-200">
+                <Icon name="check" size={13} />
+                Registered directly to server. Real ID: {generatedId}
               </div>
             )}
 
@@ -341,9 +374,20 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
                   Back
                 </button>
               )}
+              {step === 2 && !isOffline && (
+                <button
+                  type="button"
+                  onClick={() => handleSubmit(true)}
+                  disabled={isSubmitting}
+                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl transition-colors text-sm disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Icon name="wifi_off" size={14} />
+                  Save Offline (Queue)
+                </button>
+              )}
               <button onClick={() => { if(step < 2) setStep(s => s + 1); else handleSubmit(); }} disabled={isSubmitting}
                 className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm disabled:opacity-50">
-                {isSubmitting ? 'Registering...' : (step < 2 ? 'Continue' : 'Register Patient')}
+                {isSubmitting ? 'Registering...' : (step < 2 ? 'Continue' : isOffline ? 'Save Offline (Queue Patient)' : 'Register Patient (Online)')}
               </button>
             </div>
           </div>

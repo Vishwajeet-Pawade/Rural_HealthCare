@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Icon, Card, HealthIDCard } from '../components/shared';
 import { createConsultation, getPatients, getCurrentUser } from '../api/client';
-import { saveOfflineConsultation } from '../services/syncEngine';
+import { saveOfflineConsultation, syncEngine } from '../services/syncEngine';
 
 interface Props { navigate: (s: string) => void; }
 
@@ -84,7 +84,7 @@ export default function HealthAssessment({ navigate }: Props) {
       riskLevel: (isAbnormal('temp', vitals.temp) || isAbnormal('hr', vitals.hr) || isAbnormal('spo2', vitals.spo2)) ? ('high' as const) : ('moderate' as const),
     };
 
-    const isDeviceOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const isDeviceOffline = !syncEngine.isOnline();
 
     if (isDeviceOffline) {
       try {
@@ -103,7 +103,7 @@ export default function HealthAssessment({ navigate }: Props) {
     } catch (e: any) {
       console.error('Online consultation request failed:', e);
       const isNetworkError =
-        (typeof navigator !== 'undefined' && !navigator.onLine) ||
+        !syncEngine.isOnline() ||
         e.name === 'TypeError' ||
         e.message?.includes('Network error') ||
         e.message?.includes('Failed to fetch') ||

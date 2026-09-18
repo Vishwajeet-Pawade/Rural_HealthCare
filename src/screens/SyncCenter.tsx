@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { SYNC_RECORDS } from '../data';
 import { SyncBadge, Card, Icon, SectionHeader } from '../components/shared';
 import { syncEngine } from '../services/syncEngine';
-import type { OutboxItem } from '../services/offlineDb';
+import { offlineDb, type OutboxItem, type OfflinePatient, type OfflineConsultation } from '../services/offlineDb';
 import type { SyncRecord } from '../types';
 
 interface Props { navigate: (s: string) => void; isOffline: boolean; }
@@ -12,6 +12,10 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
   const [records, setRecords] = useState(SYNC_RECORDS);
   const [pendingCount, setPendingCount] = useState(0);
   const [outboxItems, setOutboxItems] = useState<OutboxItem[]>([]);
+  const [syncedPatients, setSyncedPatients] = useState<OfflinePatient[]>([]);
+  const [syncedConsultations, setSyncedConsultations] = useState<OfflineConsultation[]>([]);
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   async function refreshOutbox() {
     try {
@@ -19,6 +23,11 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
       const items = await syncEngine.getPendingItems();
       setPendingCount(count);
       setOutboxItems(items);
+
+      const localP = await offlineDb.patients.filter(p => !!p.synced).toArray();
+      const localC = await offlineDb.consultations.filter(c => !!c.synced).toArray();
+      setSyncedPatients(localP);
+      setSyncedConsultations(localC);
     } catch (err) {
       console.error('Failed to query outbox queue:', err);
     }
@@ -35,11 +44,19 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
   async function handleSyncNow() {
     if (isOffline || syncing) return;
     setSyncing(true);
+    setSyncSuccess(null);
+    setSyncError(null);
     try {
-      await syncEngine.flushOutbox();
+      const res = await syncEngine.flushOutbox();
       await refreshOutbox();
-    } catch (err) {
-      console.error('Failed to flush outbox:', err);
+      if (res.success && res.processed > 0) {
+        setSyncSuccess(`Synchronized ${res.processed} record${res.processed > 1 ? 's' : ''} successfully!`);
+        setTimeout(() => setSyncSuccess(null), 4000);
+      } else if (res.errors > 0) {
+        setSyncError(res.lastError || 'Sync failed for 1 or more records. Please retry.');
+      }
+    } catch (err: any) {
+      setSyncError(err.message || 'Failed to flush outbox');
     } finally {
       setSyncing(false);
     }
@@ -49,18 +66,66 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
     handleSyncNow();
   }
 
+  async function handleRemoveItem(id?: number) {
+    if (id === undefined) return;
+    await syncEngine.removeOutboxItem(id);
+    await refreshOutbox();
+  }
+
+  async function handleDeleteLocalRecord(patientId?: string, consultationId?: string) {
+    try {
+      if (patientId) {
+        await offlineDb.patients.delete(patientId);
+      }
+      if (consultationId) {
+        await offlineDb.consultations.delete(consultationId);
+      }
+      await refreshOutbox();
+    } catch (err) {
+      console.error('Failed to delete local record:', err);
+    }
+  }
+
   const synced = records.filter(r => r.status === 'synced');
   const failed = records.filter(r => r.status === 'failed');
 
-  const outboxRecords: SyncRecord[] = outboxItems.map(item => ({
+  const localSyncedRecords: (SyncRecord & { queueId?: number; localPatientId?: string; localConsultationId?: string })[] = [
+    ...syncedPatients.map(p => ({
+      id: `local-pat-${p.id}`,
+      localPatientId: p.id,
+      type: 'Patient Registration' as const,
+      description: `${p.name} (${p.healthId || p.id})`,
+      status: 'synced' as const,
+      recordedAt: p.createdAt ? new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Local record',
+      syncedAt: 'Synced to Cloud ✓',
+    })),
+    ...syncedConsultations.map(c => ({
+      id: `local-cons-${c.id}`,
+      localConsultationId: c.id,
+      type: 'Consultation' as const,
+      description: `Consultation for ${c.patientId}`,
+      status: 'synced' as const,
+      recordedAt: c.createdAt ? new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Local record',
+      syncedAt: 'Synced to Cloud ✓',
+    })),
+  ];
+
+  const totalSyncedCount = synced.length + localSyncedRecords.length;
+
+  const outboxRecords: (SyncRecord & { queueId?: number })[] = outboxItems.map(item => ({
     id: `queue-${item.id}`,
+    queueId: item.id,
     type: item.action === 'CREATE_PATIENT' ? 'Patient Registration' : item.action === 'CREATE_CONSULTATION' ? 'Consultation' : item.action,
     description: item.payload?.name ? `${item.payload.name} (Offline outbox)` : item.payload?.patientId ? `Consultation for ${item.payload.patientId} (Offline outbox)` : `Offline ${item.action}`,
     status: 'pending',
     recordedAt: new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   }));
 
-  const allRecords = [...outboxRecords, ...records];
+  const allRecords: (SyncRecord & { queueId?: number; localPatientId?: string; localConsultationId?: string })[] = [
+    ...outboxRecords,
+    ...localSyncedRecords,
+    ...records,
+  ];
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
@@ -99,7 +164,7 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
         {!isOffline && !syncing && (
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Synced ✓', count: synced.length, color: 'bg-green-100 text-green-800' },
+              { label: 'Synced ✓', count: totalSyncedCount, color: 'bg-green-100 text-green-800' },
               { label: 'Pending ↻', count: pendingCount, color: 'bg-amber-100 text-amber-800' },
               { label: 'Failed !', count: failed.length, color: 'bg-red-100 text-red-800' },
             ].map(s => (
@@ -111,6 +176,31 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
           </div>
         )}
       </div>
+
+      {/* Sync notification banners */}
+      {syncSuccess && (
+        <div className="p-3.5 bg-green-50 border border-green-200 rounded-xl text-xs text-green-800 flex items-center justify-between font-medium">
+          <div className="flex items-center gap-2">
+            <Icon name="check" size={15} className="text-green-600 shrink-0" />
+            <span>{syncSuccess}</span>
+          </div>
+          <button onClick={() => setSyncSuccess(null)} className="text-green-600 hover:text-green-800 text-xs font-semibold">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {syncError && (
+        <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-center justify-between font-medium">
+          <div className="flex items-center gap-2">
+            <Icon name="alert" size={15} className="text-red-600 shrink-0" />
+            <span>{syncError}</span>
+          </div>
+          <button onClick={() => setSyncError(null)} className="text-red-600 hover:text-red-800 text-xs font-semibold">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex gap-3">
@@ -155,7 +245,26 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
                     <div className="text-sm font-medium text-gray-900">{record.description}</div>
                     <div className="text-xs text-gray-500">{record.type}</div>
                   </div>
-                  <SyncBadge status={record.status} />
+                  <div className="flex items-center gap-1.5">
+                    <SyncBadge status={record.status} />
+                    {record.queueId !== undefined ? (
+                      <button
+                        onClick={() => handleRemoveItem(record.queueId)}
+                        title="Cancel and remove from sync queue"
+                        className="w-5 h-5 rounded hover:bg-gray-200 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors"
+                      >
+                        <Icon name="x" size={11} />
+                      </button>
+                    ) : (record.localPatientId || record.localConsultationId) ? (
+                      <button
+                        onClick={() => handleDeleteLocalRecord(record.localPatientId, record.localConsultationId)}
+                        title="Delete from local offline database"
+                        className="w-5 h-5 rounded hover:bg-gray-200 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors"
+                      >
+                        <Icon name="x" size={11} />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400 font-mono">
                   <span>Recorded: {record.recordedAt}</span>
