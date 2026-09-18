@@ -1,30 +1,46 @@
 import { useState, useEffect } from 'react';
 import { AI_ASSESSMENTS, PATIENTS } from '../data';
 import { RiskBadge, Card, AIDisclaimer, Icon } from '../components/shared';
+import { getAiAssessments } from '../api/client';
 
 interface Props { navigate: (s: string) => void; }
 
 export default function AIRiskAssessment({ navigate }: Props) {
+  const [assessments, setAssessments] = useState(AI_ASSESSMENTS);
   const [activeCase, setActiveCase] = useState(0);
-  const [customAssessment, setCustomAssessment] = useState<any>(null);
 
   useEffect(() => {
-    const local = localStorage.getItem('latestAssessment');
-    if(local) {
-      setCustomAssessment(JSON.parse(local));
-    }
+    getAiAssessments()
+      .then(items => {
+        if (items && items.length > 0) {
+          setAssessments(items.map((a: any) => ({
+            id: a.assessmentCode || a.id,
+            consultationId: a.consultationId,
+            patientId: a.patient?.healthId || a.patientId,
+            riskLevel: (a.riskLevel?.toLowerCase() || 'moderate') as any,
+            symptomsConsidered: a.symptomsConsidered || [],
+            abnormalVitals: a.abnormalVitals || [],
+            riskFactors: a.riskFactors || [],
+            reasoning: a.reasoning,
+            recommendedAction: a.recommendedAction,
+            confidence: a.confidence || 85,
+            generatedAt: new Date(a.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+          })));
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  const assessment = (activeCase === 0 && customAssessment) ? customAssessment : AI_ASSESSMENTS[activeCase];
+  const assessment = assessments[activeCase] || AI_ASSESSMENTS[0];
   const patientFound = PATIENTS.find(p => p.id === assessment.patientId);
   const patient: any = patientFound ?? {
     id: assessment.patientId,
-    name: 'Generated Patient',
-    age: 30,
+    name: 'Patient',
+    age: '--',
     gender: 'M',
-    village: 'Demo',
+    village: '',
     chronicConditions: [],
-    currentMedications: []
+    currentMedications: [],
   };
 
   const riskColors = {
@@ -48,24 +64,21 @@ export default function AIRiskAssessment({ navigate }: Props) {
         </div>
       </div>
 
-      {/* Case selector */}
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {AI_ASSESSMENTS.map((a, i) => {
-          const p = PATIENTS.find(pt => pt.id === a.patientId)!;
+        {assessments.map((a, i) => {
+          const p = PATIENTS.find(pt => pt.id === a.patientId);
           return (
             <button key={a.id} onClick={() => setActiveCase(i)}
               className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${i === activeCase ? 'bg-brand-600 text-white border-brand-600' : 'bg-white border-gray-200 text-gray-600 hover:border-brand-300'}`}>
               <div className={`w-2 h-2 rounded-full ${a.riskLevel === 'critical' ? 'bg-red-500' : 'bg-amber-500'}`} />
-              {p.name}
+              {p?.name || a.patientId}
             </button>
           );
         })}
       </div>
 
-      {/* AI Disclaimer */}
       <AIDisclaimer />
 
-      {/* Patient info bar */}
       <div className="flex items-center gap-3 p-4 bg-white border border-gray-100 rounded-2xl">
         <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm">
           {patient.name.split(' ').map((w: string) => w[0]).join('')}
@@ -81,7 +94,6 @@ export default function AIRiskAssessment({ navigate }: Props) {
         </div>
       </div>
 
-      {/* Risk level card */}
       <div className={`rounded-2xl border-2 p-6 ${rc.bg} ${rc.border}`}>
         <div className="flex items-center justify-between">
           <div>
@@ -101,7 +113,6 @@ export default function AIRiskAssessment({ navigate }: Props) {
               </div>
             </div>
           </div>
-          {/* Confidence arc */}
           <div className="relative w-20 h-20 shrink-0">
             <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
               <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3" />
@@ -115,7 +126,6 @@ export default function AIRiskAssessment({ navigate }: Props) {
           </div>
         </div>
 
-        {/* Recommended action */}
         <div className={`mt-5 p-4 rounded-xl bg-white/70 border ${rc.border}`}>
           <div className="flex items-start gap-2.5">
             <div className={`w-8 h-8 rounded-lg ${rc.icon} flex items-center justify-center shrink-0`}>
@@ -129,9 +139,7 @@ export default function AIRiskAssessment({ navigate }: Props) {
         </div>
       </div>
 
-      {/* Analysis details */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Symptoms considered */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <Icon name="clipboard" size={14} className="text-brand-600" />
@@ -147,7 +155,6 @@ export default function AIRiskAssessment({ navigate }: Props) {
           </div>
         </Card>
 
-        {/* Abnormal vitals */}
         <Card className="p-4 border-red-100">
           <div className="flex items-center gap-2 mb-3">
             <Icon name="activity" size={14} className="text-red-600" />
@@ -163,7 +170,6 @@ export default function AIRiskAssessment({ navigate }: Props) {
           </div>
         </Card>
 
-        {/* Risk factors */}
         <Card className="p-4 border-amber-100">
           <div className="flex items-center gap-2 mb-3">
             <Icon name="alert" size={14} className="text-amber-600" />
@@ -180,7 +186,6 @@ export default function AIRiskAssessment({ navigate }: Props) {
         </Card>
       </div>
 
-      {/* AI Reasoning */}
       <Card className="p-5">
         <div className="flex items-center gap-2 mb-3">
           <Icon name="brain" size={16} className="text-brand-600" />
@@ -194,7 +199,6 @@ export default function AIRiskAssessment({ navigate }: Props) {
         </div>
       </Card>
 
-      {/* Patient history context */}
       <Card className="p-5">
         <div className="text-sm font-semibold text-gray-800 mb-3">Patient History Considered</div>
         <div className="grid grid-cols-2 gap-3">
@@ -217,7 +221,6 @@ export default function AIRiskAssessment({ navigate }: Props) {
         </div>
       </Card>
 
-      {/* Action buttons */}
       <div className="flex flex-col sm:flex-row gap-3">
         <button onClick={() => navigate('referral')}
           className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm">
@@ -229,13 +232,11 @@ export default function AIRiskAssessment({ navigate }: Props) {
           <Icon name="user" size={18} />
           View Full Patient Record
         </button>
-        <button
-          className="px-5 py-3.5 border border-gray-200 text-gray-600 font-medium rounded-xl hover:bg-gray-50 transition-colors text-sm">
+        <button className="px-5 py-3.5 border border-gray-200 text-gray-600 font-medium rounded-xl hover:bg-gray-50 transition-colors text-sm">
           Save Assessment
         </button>
       </div>
 
-      {/* Final disclaimer */}
       <div className="text-center text-xs text-gray-400 leading-relaxed px-4">
         <Icon name="shield" size={11} className="inline-block mr-1" />
         This assessment is a decision-support tool only. The final clinical decision must be made by an authorized healthcare professional. Do not delay emergency care based on AI output.

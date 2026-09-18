@@ -72,6 +72,7 @@ model User {
   passwordHash String?
   pinHash      String?
   active       Boolean   @default(true)
+  isDemo       Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -102,6 +103,7 @@ model Facility {
   targetReferrals     Referral[]
   emergencyLogs       EmergencyAccessLog[]
   consentArtifacts    ConsentArtifact[]
+  medicines           Medicine[]
 }
 
 model Doctor {
@@ -117,6 +119,7 @@ model Doctor {
   distance              String?
   isPreferred           Boolean     @default(false)
   recommendationReasons String[]
+  isDemo                Boolean     @default(false)
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 
@@ -128,16 +131,21 @@ model Doctor {
 }
 
 model Worker {
-  id         String   @id @default(uuid())
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
-  workerType String   @default("ASHA")
-  village    String
-  district   String
-  state      String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  workerType   String   @default("ASHA")
+  workerCode   String?  @unique
+  village      String
+  subCentre    String?
+  assignedPhc  String?
+  district     String
+  state        String
+  status       String   @default("ACTIVE")
+  isDemo       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   patients Patient[]
 }
@@ -172,6 +180,7 @@ model Patient {
   registeredAt       String
   consentStatus      ConsentStatus  @default(GRANTED)
   vaccinationStatus  String         @default("Fully vaccinated")
+  isDemo             Boolean        @default(false)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
@@ -208,6 +217,7 @@ model Consultation {
   referralStatus   String       @default("none")
   followUpDate     String?
   syncStatus       SyncStatus   @default(SYNCED)
+  isDemo           Boolean      @default(false)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -230,6 +240,7 @@ model AIAssessment {
   confidence         Int
   generatedAt        String
   modelVersion       String        @default("v2.1")
+  isDemo             Boolean       @default(false)
   createdAt          DateTime      @default(now())
 }
 
@@ -254,6 +265,7 @@ model Referral {
   priority     ReferralPriority @default(ROUTINE)
   notes        String?
   aiSummary    String?
+  isDemo       Boolean          @default(false)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 }
@@ -284,22 +296,28 @@ model SosAlert {
 }
 
 model ConsentArtifact {
-  id          String        @id @default(uuid())
-  consentCode String        @unique
-  patientId   String
-  patient     Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  grantedTo   String
-  role        String
-  organization String
-  facilityId  String?
-  facility    Facility?     @relation(fields: [facilityId], references: [id])
-  status      ConsentStatus @default(GRANTED)
-  purpose     String
-  dataScope   String[]
-  grantedAt   String
-  expiresAt   String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id               String        @id @default(uuid())
+  consentCode      String        @unique
+  patientId        String
+  patient          Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  grantedTo        String
+  role             String
+  organization     String
+  facilityId       String?
+  facility         Facility?     @relation(fields: [facilityId], references: [id])
+  status           ConsentStatus @default(GRANTED)
+  purpose          String
+  dataScope        String[]
+  grantedAt        String
+  expiresAt        String?
+  hiuId            String?
+  hipId            String?
+  consentManagerId String?       @default("mock-abdm-cm@sbx")
+  signature        String?
+  isMock           Boolean       @default(true)
+  isDemo           Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 }
 
 model EmergencyAccessLog {
@@ -340,7 +358,33 @@ model AuditLog {
   dataAccessed String[]
   timestamp    String
   purpose      String
+  isDemo       Boolean  @default(false)
   createdAt    DateTime @default(now())
+}
+
+model Medicine {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  name          String
+  genericName   String
+  brand         String?
+  dosageForm    String
+  strength      String
+  category      String
+  stock         Int       @default(0)
+  minStockLevel Int       @default(10)
+  isLowStock    Boolean   @default(false)
+  batch         String?
+  expiryDate    String?
+  supplier      String?
+  facilityId    String?
+  facility      Facility? @relation(fields: [facilityId], references: [id])
+  facilityName  String?
+  unitPrice     Float     @default(0.0)
+  availability  String    @default("In Stock")
+  isDemo        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model SyncRecord {
@@ -353,5 +397,111 @@ model SyncRecord {
   syncedAt    String?
   error       String?
   createdAt   DateTime   @default(now())
+}
+
+// ==========================================
+// MOCK ABDM REGISTRY MODELS (SIH 26133 DEMO)
+// ==========================================
+
+model MockHFRFacility {
+  id                String   @id @default(uuid())
+  hfrId             String   @unique
+  facilityName      String
+  facilityType      String   // Sub Centre, PHC, CHC, District Hospital, Diagnostic Centre, Telemedicine Node
+  subType           String?
+  ownership         String   @default("Government/Public")
+  state             String
+  district          String
+  subDistrict       String?
+  village           String?
+  pincode           String
+  address           String
+  latitude          Float?
+  longitude         Float?
+  contactPhone      String
+  contactEmail      String
+  services          String[] // ["OPD", "IPD", "Emergency", "Maternity", "Immunization", "Laboratory", "Telemedicine"]
+  specialties       String[] // ["General Medicine", "Pediatrics", "Obstetrics & Gynecology", "Minor Surgery"]
+  hasEmergency      Boolean  @default(false)
+  operationalStatus String   @default("ACTIVE") // ACTIVE, TEMPORARILY_CLOSED
+  openingHours      String   @default("24x7")
+  registryStatus    String   @default("VERIFIED_MOCK")
+  isMock            Boolean  @default(true)
+  linkedFacilityId  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model MockHPRProfessional {
+  id                  String   @id @default(uuid())
+  hprId               String   @unique
+  fullName            String
+  gender              String
+  professionalType    String   // Doctor, Specialist, Medical Officer, AYUSH Practitioner
+  qualification       String   // MBBS, MD, MS, DCH, DNB
+  specialties         String[] // ["General Medicine", "Pediatrics", "Obstetrics & Gynecology", "Emergency Medicine"]
+  registrationNumber  String   // Council registration number
+  registrationCouncil String   // e.g. "Maharashtra Medical Council"
+  state               String
+  district            String
+  primaryHfrId        String?  // Associated facility HFR ID
+  primaryFacilityName String?
+  languages           String[] // ["Marathi", "Hindi", "English"]
+  contactPhone        String
+  contactEmail        String
+  verificationStatus  String   @default("VERIFIED_MOCK")
+  isMock              Boolean  @default(true)
+  linkedDoctorId      String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model MockWorkerDirectory {
+  id                 String   @id @default(uuid())
+  workerCode         String   @unique
+  name               String
+  workerType         String   @default("ASHA") // ASHA, ANM, CHO
+  assignedVillage    String
+  subCentre          String
+  parentPhcName      String
+  parentPhcHfrId     String
+  district           String
+  state              String
+  pincode            String
+  contactPhone       String
+  languages          String[] // ["Marathi", "Hindi"]
+  assignedPopulation Int      @default(1200)
+  active             Boolean  @default(true)
+  latitude           Float?
+  longitude          Float?
+  linkedWorkerId     String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model MockABHAProfile {
+  id              String   @id @default(uuid())
+  abhaAddress     String   @unique // e.g. "mock-abha-000001@sbx"
+  abhaNumber      String   @unique // e.g. "91-8472-9102-4411"
+  fullName        String
+  fullNameHi      String?
+  gender          String   // M, F, O
+  dob             String   // YYYY-MM-DD
+  dayOfBirth      String?
+  monthOfBirth    String?
+  yearOfBirth     String?
+  mobile          String
+  address         String
+  village         String
+  district        String
+  state           String
+  pincode         String
+  authMethods     String[] // ["MOBILE_OTP", "DEMO_AUTH"]
+  status          String   @default("ACTIVE")
+  isMock          Boolean  @default(true)
+  linkedPatientId String?
+  linkedHealthId  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 

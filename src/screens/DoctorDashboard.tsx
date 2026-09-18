@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PATIENTS, REFERRALS } from '../data';
-import { StatCard, RiskBadge, PriorityBadge, ReferralBadge, PatientRow, Card, SectionHeader, Icon, HPRBadge, HFRBadge, DutyStatusBadge, ABDMLayerLegend } from '../components/shared';
+import { StatCard, RiskBadge, PriorityBadge, ReferralBadge, Card, SectionHeader, Icon, HPRBadge, HFRBadge, ABDMLayerLegend } from '../components/shared';
+import { getDoctorDashboardData, updateDoctorDutyStatus, getCurrentUser } from '../api/client';
 
 interface SOSAlert {
   id: string; from: string; role: string; patientId: string; location: string;
@@ -25,54 +26,55 @@ const STATUS_OPTIONS: { value: DutyStatus; label: string; sub: string; dot: stri
 ];
 
 export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS, onAcknowledgeSOS, onDeclineSOS }: Props) {
+  const [patients, setPatients] = useState(PATIENTS);
+  const [referrals, setReferrals] = useState(REFERRALS);
+  const [doctorId, setDoctorId] = useState<string>('');
   const [search, setSearch] = useState('');
   const [myStatus, setMyStatus] = useState<DutyStatus>('available');
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
-  const [realReferrals, setRealReferrals] = useState<any[]>([]);
+  const [isLive, setIsLive] = useState(false);
   const [dbUser, setDbUser] = useState<any>(null);
 
   useEffect(() => {
-    import('../imports/api').then(({ referrals, auth, getToken }) => {
-      const token = getToken() || undefined;
-      referrals.get(token).then(res => {
-        if(res.data?.referrals?.length > 0) {
-          const mapped = res.data.referrals.map((r: any) => ({
-            ...r,
-            status: r.status.toLowerCase(),
-            priority: r.priority.toLowerCase(),
-            riskLevel: r.riskLevel.toLowerCase(),
-          }));
-          setRealReferrals(mapped);
-        }
-      }).catch(e => console.error("Failed to load referrals", e));
-
-      auth.getCurrentUser(token).then((res: any) => {
-        if (res.data?.user) setDbUser(res.data.user);
-      }).catch((e: any) => console.error("Failed to load user", e));
-    });
+    getCurrentUser().then(setDbUser).catch(() => {});
   }, []);
 
-  const baseReferrals = realReferrals.length > 0 ? realReferrals : [];
-  const pendingReferrals = baseReferrals.filter((r: any) => r.status === 'pending' || r.status === 'accepted');
-  const isMock = !dbUser;
+  useEffect(() => {
+    getDoctorDashboardData()
+      .then(data => {
+        if (data?.patients?.length) {
+          setPatients(data.patients);
+          if (data.referrals?.length) setReferrals(data.referrals);
+          if (data.doctor) {
+            setDoctorId(data.doctor.id);
+            if (data.doctor.dutyStatus) setMyStatus(data.doctor.dutyStatus.toLowerCase() as DutyStatus);
+          }
+          setIsLive(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
-  // Use mock only if not logged in (dev preview)
-  const mockReferrals = isMock ? REFERRALS.filter((r: any) => r.status === 'pending' || r.status === 'accepted') : [];
-  const displayReferrals = isMock ? mockReferrals : pendingReferrals;
+  function handleStatusChange(status: DutyStatus) {
+    setMyStatus(status);
+    setStatusPickerOpen(false);
+    if (doctorId) updateDoctorDutyStatus(doctorId, status.toUpperCase() as any).catch(() => {});
+  }
 
-  const criticalPatients = isMock ? PATIENTS.filter((p: any) => p.riskLevel === 'critical' || p.riskLevel === 'high') : [];
+  const isMock = !isLive;
+  const displayReferrals = referrals.filter(r => r.status === 'pending' || r.status === 'accepted');
+  const criticalPatients = patients.filter((p: any) => p.riskLevel === 'critical' || p.riskLevel === 'high');
 
-  const doctorName = dbUser?.fullName || 'Dr. Ankit Sharma';
+  const doctorName = dbUser?.fullName || 'Doctor';
+  const doctorProfile = dbUser?.doctorProfile;
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      {/* Greeting */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <h1 className="font-display text-2xl font-bold text-gray-900">{doctorName}</h1>
-            <HPRBadge id={dbUser?.doctorProfile?.healthId || "HPR-PENDING"} />
-            {/* Clickable availability status */}
+            <HPRBadge id={doctorProfile?.hprId || 'HPR-PENDING'} />
             <div className="relative">
               <button
                 onClick={() => setStatusPickerOpen(o => !o)}
@@ -89,7 +91,7 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
                   {STATUS_OPTIONS.map(opt => (
                     <button
                       key={opt.value}
-                      onClick={() => { setMyStatus(opt.value); setStatusPickerOpen(false); }}
+                      onClick={() => handleStatusChange(opt.value)}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left ${myStatus === opt.value ? 'bg-gray-50' : ''}`}
                     >
                       <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${opt.dot}`} />
@@ -108,8 +110,8 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm text-gray-500">{dbUser?.doctorProfile?.facility || 'PHC / Hospital'} · {dbUser?.doctorProfile?.specialty || 'General Medicine'} · {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-            <HFRBadge id={dbUser?.doctorProfile?.hfrId || "HFR-PENDING"} compact />
+            <p className="text-sm text-gray-500">{doctorProfile?.facility?.name || 'PHC / Hospital'} · {doctorProfile?.specialty || 'General Medicine'} · {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+            <HFRBadge id={doctorProfile?.facility?.hfrId || 'HFR-PENDING'} compact />
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -125,15 +127,12 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
         </div>
       </div>
 
-      {/* ABDM identity layer legend */}
       <ABDMLayerLegend />
 
-      {/* SOS incoming alerts — with Accept / Decline workflow */}
       {sosAlerts.length > 0 && (
         <div className="space-y-3">
           {sosAlerts.map(sos => (
             <div key={sos.id} className={`rounded-2xl shadow-lg overflow-hidden ${sos.status === 'acknowledged' ? 'shadow-green-200' : 'shadow-red-200'}`}>
-              {/* Alert header */}
               <div className={`flex items-start gap-3 px-4 py-4 ${sos.status === 'acknowledged' ? 'bg-green-600' : 'bg-red-600 animate-pulse'} text-white`}>
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${sos.status === 'acknowledged' ? 'bg-green-500' : 'bg-red-500'}`}>
                   <Icon name={sos.status === 'acknowledged' ? 'check' : 'alert'} size={20} />
@@ -150,7 +149,6 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
                 </div>
               </div>
 
-              {/* SOS workflow body */}
               <div className="bg-white border-x border-b border-red-100 rounded-b-2xl px-4 py-3 space-y-3">
                 <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl">
                   <Icon name="info" size={13} className="text-amber-600 shrink-0 mt-0.5" />
@@ -159,7 +157,6 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
                   </p>
                 </div>
 
-                {/* Actions */}
                 {sos.status === 'acknowledged' ? (
                   <div className="flex items-center gap-3">
                     <button onClick={() => navigate('emergency-access')}
@@ -194,15 +191,13 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
         </div>
       )}
 
-      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="New Referrals" value={displayReferrals.length} sub="Awaiting review" icon="share" color="amber" />
-        <StatCard label="Today's Patients" value={isMock ? "14" : "0"} sub={isMock ? "6 completed" : "Start by adding assessment"} icon="users" color="brand" />
+        <StatCard label="Today's Patients" value={isMock ? "14" : String(patients.length)} sub={isMock ? "6 completed" : "Live from PostgreSQL"} icon="users" color="brand" />
         <StatCard label="High-risk Cases" value={criticalPatients.length} sub="Under monitoring" icon="alert" color="red" />
         <StatCard label="Pending Follow-ups" value={isMock ? "8" : "0"} sub={isMock ? "3 overdue" : "No follow-ups yet"} icon="history" color="purple" />
       </div>
 
-      {/* Patient search */}
       <div className="relative">
         <Icon name="search" size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
         <input value={search} onChange={e => setSearch(e.target.value)}
@@ -212,7 +207,6 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-5">
-          {/* New referrals – urgent attention */}
           <Card>
             <div className="px-4 pt-4">
               <SectionHeader title="New Referrals" sub="Requires immediate review" action={
@@ -244,7 +238,6 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
             </div>
           </Card>
 
-          {/* Today's schedule */}
           <Card>
             <div className="px-4 pt-4">
               <SectionHeader title="Today's Consultations" sub={new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} />
@@ -283,7 +276,7 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
               ) : (
                 <div className="p-6 text-center text-gray-400 text-sm">
                   <Icon name="clipboard" size={24} className="mx-auto mb-2 text-gray-300" />
-                  No consultations recorded yet. Use <strong>New Assessment</strong> to start.
+                  No consultations recorded yet.
                 </div>
               )}
             </div>
@@ -291,7 +284,6 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
         </div>
 
         <div className="space-y-4">
-          {/* Critical patients */}
           <Card className="border-red-100">
             <div className="px-4 pt-4">
               <SectionHeader title="Critical Patients" />
@@ -318,7 +310,6 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
             </div>
           </Card>
 
-          {/* Quick patient lookup */}
           <Card className="p-4">
             <SectionHeader title="Quick Lookup" sub="Enter patient Health ID" />
             <div className="flex gap-2">
@@ -330,7 +321,6 @@ export default function DoctorDashboard({ navigate, sosAlerts = [], onDismissSOS
             </div>
           </Card>
 
-          {/* Follow-ups */}
           <Card className="p-4">
             <SectionHeader title="Follow-ups Due" />
             <div className="space-y-2">
