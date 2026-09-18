@@ -11,6 +11,7 @@ import HealthAssessment from './screens/HealthAssessment';
 import AIRiskAssessment from './screens/AIRiskAssessment';
 import ReferralSystem from './screens/ReferralSystem';
 import DoctorDashboard from './screens/DoctorDashboard';
+import DoctorSosInbox from './screens/DoctorSosInbox';
 import EmergencyAccess from './screens/EmergencyAccess';
 import EmergencyAccessLog from './screens/EmergencyAccessLog';
 import DoctorPatientView from './screens/DoctorPatientView';
@@ -136,6 +137,11 @@ const NAV: Record<Role, NavItem[]> = {
       id: 'referral',
       label: 'Referrals',
       icon: 'share',
+    },
+    {
+      id: 'doctor-sos-inbox',
+      label: 'SOS Inbox',
+      icon: 'bell',
     },
     {
       id: 'emergency-access',
@@ -1154,6 +1160,13 @@ export default function App() {
             />
           )}
 
+          {(screen === 'doctor-sos-inbox' || screen === 'sos-inbox') && (
+            <DoctorSosInbox
+              navigate={navigate}
+              isOffline={isOffline}
+            />
+          )}
+
           {screen ===
             'emergency-access' && (
             <EmergencyAccess
@@ -1168,6 +1181,9 @@ export default function App() {
             <EmergencyAccessLog
               navigate={
                 navigate
+              }
+              isOffline={
+                isOffline
               }
             />
           )}

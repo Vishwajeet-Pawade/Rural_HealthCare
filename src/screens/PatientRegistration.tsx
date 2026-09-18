@@ -41,28 +41,6 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
     setIsSubmitting(true);
     setError('');
     try {
-      const payload = {
-        name: form.name.trim(),
-        nameHi: form.nameHi.trim() || form.name.trim(),
-        dob: form.dob,
-        gender: form.gender,
-        bloodGroup: form.blood || 'Not known',
-        phone: form.phone.trim(),
-        village: form.village.trim(),
-        district: form.district.trim(),
-        state: form.state.trim(),
-        address: form.address.trim() || `${form.village.trim()}, ${form.district.trim()}, ${form.state.trim()}`,
-        emergencyContact: {
-          name: form.emergencyName.trim(),
-          relation: form.emergencyRelation.trim() || 'Family',
-          phone: form.emergencyPhone.trim()
-        },
-        allergies: form.allergies ? form.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
-        chronicConditions: form.conditions ? form.conditions.split(',').map(s => s.trim()).filter(Boolean) : [],
-        currentMedications: form.medications ? form.medications.split(',').map(s => s.trim()).filter(Boolean) : [],
-        abhaAddress: form.abhaAddress.trim() || undefined,
-        abhaNumber: form.abhaNumber.trim() || undefined,
-        consent: { granted: true },
       const payload: any = {
         name: form.name.trim(),
         nameHi: form.nameHi.trim() || undefined,
@@ -358,7 +336,6 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
             </div>
 
             <button onClick={() => navigate('patient-profile', registeredPatient?.id || registeredPatient?.healthId || generatedId)}
-            <button onClick={() => navigate('patient-profile', generatedId)}
               className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors">
               View Patient Profile
             </button>

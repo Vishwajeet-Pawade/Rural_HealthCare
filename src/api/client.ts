@@ -950,6 +950,7 @@ export async function getPatientDashboardData(
 // ─── Emergency & Break-Glass (T3 Tier) ──────────────────────────────────────
 
 export interface AuthorizeEmergencyPayload {
+  sosAlertId?: string;
   patientId?: string;
   patientHealthId: string;
   patientName: string;
@@ -984,8 +985,10 @@ export interface DispatchSosPayload {
   senderId?: string;
   patientId?: string;
   patientHealthId: string;
+  facilityId?: string;
   location: string;
   targetedDoctorId?: string;
+  vitalsSnapshot?: any;
 }
 
 export async function dispatchSosAlert(payload: DispatchSosPayload): Promise<any> {
@@ -1000,6 +1003,43 @@ export async function dispatchSosAlert(payload: DispatchSosPayload): Promise<any
 export async function getActiveSosAlerts(): Promise<any[]> {
   const res = await request<ApiResponse<any[]>>('/emergency/sos/active');
   return res.data || [];
+}
+
+export async function getDoctorSosInbox(doctorId?: string): Promise<any[]> {
+  const query = doctorId ? `?doctorId=${encodeURIComponent(doctorId)}` : '';
+  const res = await request<ApiResponse<any[]>>(`/emergency/sos/inbox${query}`);
+  return res.data || [];
+}
+
+export async function acceptSosAlert(id: string, responderId?: string, responderName?: string): Promise<any> {
+  const res = await request<ApiResponse<any>>(`/emergency/sos/${encodeURIComponent(id)}/accept`, {
+    method: 'POST',
+    body: JSON.stringify({ responderId, responderName }),
+  });
+
+  return res.data;
+}
+
+export async function declineSosAlert(id: string, responderId?: string): Promise<any> {
+  const res = await request<ApiResponse<any>>(`/emergency/sos/${encodeURIComponent(id)}/decline`, {
+    method: 'POST',
+    body: JSON.stringify({ responderId }),
+  });
+
+  return res.data;
+}
+
+export async function cancelSosAlert(id: string): Promise<any> {
+  const res = await request<ApiResponse<any>>(`/emergency/sos/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+  });
+
+  return res.data;
+}
+
+export async function getSosAlertStatus(id: string): Promise<any> {
+  const res = await request<ApiResponse<any>>(`/emergency/sos/${encodeURIComponent(id)}/status`);
+  return res.data;
 }
 
 export async function updateSosStatus(id: string, status: string, respondingDoctorId?: string): Promise<any> {

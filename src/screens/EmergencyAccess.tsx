@@ -24,10 +24,29 @@ export default function EmergencyAccess({ navigate }: Props) {
   const [timeLeft, setTimeLeft] = useState(900); // 15 min
   const [addlRequested, setAddlRequested] = useState(false);
   const [authorizing, setAuthorizing] = useState(false);
+  const [activeSosId, setActiveSosId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const storedSosId = sessionStorage.getItem('active_sos_alert_id');
+    if (storedSosId) {
+      setActiveSosId(storedSosId);
+      setReason('Life-threatening condition');
+      setReasonNote('Emergency SOS broadcast initiated by field worker. Expedited clinical review.');
+      setStep('auth');
+    }
+  }, []);
 
   useEffect(() => {
     if (step !== 'active') return;
-    const t = setInterval(() => setTimeLeft(s => Math.max(0, s - 1)), 1000);
+    const t = setInterval(() => {
+      setTimeLeft(s => {
+        if (s <= 1) {
+          sessionStorage.removeItem('rc_emergency_token');
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
     return () => clearInterval(t);
   }, [step]);
 
@@ -318,6 +337,7 @@ export default function EmergencyAccess({ navigate }: Props) {
           try {
             const user = await getCurrentUser().catch(() => null);
             await authorizeEmergency({
+              sosAlertId: activeSosId || undefined,
               patientHealthId: idMethod === 'temp' ? tempID : 'RHC-2026-8F4K92',
               patientName: idMethod === 'temp' ? 'Unknown Emergency Patient' : 'Priya Devi',
               doctorName: user?.fullName || 'Dr. Ankit Sharma',
@@ -462,6 +482,32 @@ export default function EmergencyAccess({ navigate }: Props) {
         <Icon name="shield" size={11} />
         Emergency audit log being recorded · Dr. Ankit Sharma · PHC Lunkaransar · {new Date().toLocaleString()}
       </div>
+
+      {/* Auto-Revocation Modal on Expiry */}
+      {timeLeft === 0 && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <Card className="p-6 max-w-md w-full text-center space-y-4 shadow-2xl border-2 border-red-300">
+            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Icon name="lock" size={24} />
+            </div>
+            <h3 className="font-bold text-gray-900 text-base">Emergency Access Window Expired</h3>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              The 15-minute emergency access period has concluded. In accordance with ABDM break-glass security protocols, patient records have been automatically sealed and access revoked.
+            </p>
+            <button
+              onClick={() => {
+                sessionStorage.removeItem('rc_emergency_token');
+                sessionStorage.removeItem('active_sos_alert_id');
+                sessionStorage.removeItem('active_sos_patient_id');
+                navigate('doctor-dashboard');
+              }}
+              className="w-full py-2.5 bg-gray-900 hover:bg-black text-white font-bold rounded-xl text-sm transition-colors"
+            >
+              Return to Doctor Dashboard
+            </button>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
