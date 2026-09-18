@@ -227,7 +227,7 @@ export async function acceptSosAlert(sosAlertId: string, responderId: string, re
       throw new AppError(`SOS Alert already accepted by ${alert.acceptedBy || 'another doctor'}`, 409);
     }
 
-    if (alert.status !== 'PENDING') {
+    if (alert.status !== 'PENDING' && alert.status !== 'DECLINED_ALL') {
       throw new AppError(`Cannot accept SOS Alert in status ${alert.status}`, 400);
     }
 
@@ -339,28 +339,41 @@ export async function getSosAlertStatus(sosAlertId: string) {
  * Doctor Inbox: Queries alerts assigned to this doctor or control room with remaining seconds
  */
 export async function getDoctorSosInbox(doctorId?: string, userId?: string, isControlRoom: boolean = false) {
+  // Find doctor record if userId was passed
+  let doctorRecord = null;
+  if (userId) {
+    try {
+      doctorRecord = await prisma.doctor.findFirst({
+        where: { OR: [{ userId }, { id: userId }] },
+      });
+    } catch {
+      // Ignored
+    }
+  }
+  const effectiveDoctorId = doctorId || doctorRecord?.id;
+
+  // Retrieve all active PENDING alerts, or DECLINED_ALL (if needing Control Room attention)
   const alerts = await prisma.sosAlert.findMany({
     where: {
-      status: 'PENDING',
-      ...(isControlRoom
-        ? { currentResponderId: 'CONTROL_ROOM' }
-        : doctorId || userId
-        ? {
-            OR: [
-              ...(doctorId ? [{ currentResponderId: doctorId }] : []),
-              ...(userId ? [{ currentResponderId: userId }] : []),
-              { currentResponderId: 'CONTROL_ROOM' },
-            ],
-          }
-        : {}),
+      status: { in: ['PENDING', 'SENT', 'NOTIFIED', 'AWAITING', 'DECLINED_ALL'] },
     },
     orderBy: { createdAt: 'desc' },
+    take: 20,
   });
 
   return alerts.map((alert) => {
-    const secondsRemaining = alert.escalationDeadline
-      ? Math.max(0, Math.round((alert.escalationDeadline.getTime() - Date.now()) / 1000))
-      : 0;
+    let secondsRemaining = 0;
+    if (alert.status === 'PENDING' && alert.escalationDeadline) {
+      secondsRemaining = Math.max(0, Math.round((alert.escalationDeadline.getTime() - Date.now()) / 1000));
+    }
+
+    const isAssignedToMe =
+      isControlRoom ||
+      !effectiveDoctorId ||
+      alert.currentResponderId === 'CONTROL_ROOM' ||
+      alert.currentResponderId === effectiveDoctorId ||
+      alert.currentResponderId === userId ||
+      alert.status === 'DECLINED_ALL';
 
     return {
       id: alert.id,
@@ -371,6 +384,8 @@ export async function getDoctorSosInbox(doctorId?: string, userId?: string, isCo
       location: alert.location,
       status: alert.status,
       escalationIndex: alert.escalationIndex,
+      currentResponderId: alert.currentResponderId,
+      isAssignedToMe,
       secondsRemaining,
       vitals: alert.vitalsSnapshot ? JSON.parse(alert.vitalsSnapshot) : null,
       createdAt: alert.createdAt,

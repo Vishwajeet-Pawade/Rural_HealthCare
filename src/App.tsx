@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Role } from './types';
 import { Icon, OfflineIndicator } from './components/shared';
-import { getCurrentUser, getToken, clearToken, dispatchSosAlert } from './api/client';
+import { getCurrentUser, getToken, clearToken, dispatchSosAlert, getActiveSosAlerts, acceptSosAlert, declineSosAlert } from './api/client';
 
 import LoginScreen from './screens/LoginScreen';
 import WorkerDashboard from './screens/WorkerDashboard';
@@ -441,6 +441,49 @@ export default function App() {
     }
   }, [role, screen]);
 
+  // Periodic sync of active SOS alerts across tabs/roles
+  useEffect(() => {
+    if (role === 'login' || isOffline) return;
+
+    const syncAlerts = async () => {
+      try {
+        const active = await getActiveSosAlerts();
+        if (Array.isArray(active)) {
+          setSosAlerts(
+            active.map((a: any) => ({
+              id: a.id,
+              from: a.fromName,
+              role: a.role,
+              patientId: a.patientHealthId,
+              location: a.location,
+              ts:
+                a.ts ||
+                new Date(a.createdAt).toLocaleTimeString('en-IN', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              offline: a.isOffline || false,
+              dismissed: a.dismissed || false,
+              status:
+                a.status === 'ACCEPTED'
+                  ? 'acknowledged'
+                  : a.status === 'DECLINED_ALL'
+                  ? 'escalated'
+                  : 'sent',
+              escalationLevel: a.escalationIndex || 0,
+            }))
+          );
+        }
+      } catch {
+        // Silently ignore if network issue
+      }
+    };
+
+    syncAlerts();
+    const timer = setInterval(syncAlerts, 4000);
+    return () => clearInterval(timer);
+  }, [role, isOffline]);
+
   function fireSOS(
     from: string,
     fromRole: string,
@@ -501,6 +544,7 @@ export default function App() {
   }
 
   function acknowledgeSOS(id: string) {
+    acceptSosAlert(id).catch((err) => console.warn('Accept SOS backend error:', err));
     setSosAlerts((alerts) =>
       alerts.map((alert) =>
         alert.id === id
@@ -514,6 +558,7 @@ export default function App() {
   }
 
   function declineSOS(id: string) {
+    declineSosAlert(id).catch((err) => console.warn('Decline SOS backend error:', err));
     setSosAlerts((alerts) =>
       alerts.map((alert) =>
         alert.id === id
@@ -973,9 +1018,7 @@ export default function App() {
               }
               activeSosAlert={
                 sosAlerts.find(
-                  (alert) =>
-                    alert.role ===
-                    'ASHA Worker'
+                  (alert) => !alert.dismissed
                 ) ?? null
               }
             />

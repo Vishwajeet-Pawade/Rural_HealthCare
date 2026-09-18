@@ -292,7 +292,7 @@ export async function getActiveSosAlerts(_req: Request, res: Response, next: Nex
     const alerts = await prisma.sosAlert.findMany({
       where: {
         dismissed: false,
-        status: { in: ['PENDING', 'ACCEPTED', 'SENT', 'NOTIFIED', 'AWAITING', 'ACKNOWLEDGED'] },
+        status: { in: ['PENDING', 'ACCEPTED', 'SENT', 'NOTIFIED', 'AWAITING', 'ACKNOWLEDGED', 'DECLINED_ALL'] },
       },
       orderBy: { createdAt: 'desc' },
       take: 20,

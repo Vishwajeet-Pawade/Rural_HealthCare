@@ -151,7 +151,9 @@ export default function DoctorSosInbox({ navigate, isOffline = false }: Props) {
 
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-mono font-bold text-red-700">
-                      ⏱ {alert.secondsRemaining}s before escalation
+                      {alert.status === 'DECLINED_ALL' || alert.currentResponderId === 'CONTROL_ROOM'
+                        ? '🚨 Escalated to District Emergency Control Room'
+                        : `⏱ ${alert.secondsRemaining}s before escalation`}
                     </span>
                   </div>
                 </div>
@@ -224,12 +226,16 @@ export default function DoctorSosInbox({ navigate, isOffline = false }: Props) {
                   {/* Action Buttons */}
                   <div className="flex flex-col sm:flex-row gap-3 pt-2">
                     <button
-                      disabled={actionInProgress === alert.id}
+                      disabled={actionInProgress === alert.id || alert.status === 'ACCEPTED'}
                       onClick={() => handleAccept(alert.id, alert.patientHealthId)}
                       className="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-colors shadow-sm"
                     >
                       <Icon name="check_circle" size={16} />
-                      {actionInProgress === alert.id ? 'Processing...' : 'Accept Emergency SOS'}
+                      {actionInProgress === alert.id
+                        ? 'Processing...'
+                        : alert.status === 'ACCEPTED'
+                        ? `✓ Accepted by ${alert.acceptedBy || 'Physician'}`
+                        : 'Accept Emergency SOS'}
                     </button>
 
                     <button

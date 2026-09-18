@@ -375,6 +375,16 @@ export default function WorkerDashboard({
     };
   }, [activeSosId, sosSent]);
 
+  // Sync active SOS from global state/backend
+  useEffect(() => {
+    if (activeSosAlert) {
+      setSosSent(true);
+      if (activeSosAlert.id && !activeSosId) {
+        setActiveSosId(activeSosAlert.id);
+      }
+    }
+  }, [activeSosAlert]);
+
   // Local second-by-second decrement for smooth UI countdown
   useEffect(() => {
     if (!sosSent) return;
@@ -837,13 +847,15 @@ export default function WorkerDashboard({
                     ? `✓ Accepted by ${liveSosStatus.acceptedBy || 'Attending Physician'} — Doctor Responding`
                     : liveSosStatus?.status === 'DECLINED_ALL' || liveSosStatus?.isControlRoom
                     ? `🚨 Control Room notified — Command Center dispatching ambulance & emergency team`
+                    : countdown <= 0
+                    ? `⚠️ Escalating to next physician on duty roster…`
                     : liveSosStatus?.hopNumber > 1
-                    ? `⚠️ Escalating to ${liveSosStatus.currentResponderName} (${liveSosStatus.hopNumber} of ${liveSosStatus.totalHops})… 0:${String(countdown).padStart(2, '0')}`
-                    : `🚨 Alerting ${liveSosStatus?.currentResponderName || selectedDoctor.name}… 0:${String(countdown).padStart(2, '0')}`}
+                    ? `⚠️ Escalating to ${liveSosStatus.currentResponderName} (${liveSosStatus.hopNumber} of ${liveSosStatus.totalHops})… ${formatCountdown(countdown)}`
+                    : `🚨 Alerting ${liveSosStatus?.currentResponderName || selectedDoctor.name}… ${formatCountdown(countdown)}`}
                 </span>
               </div>
               <span className="font-mono text-xs font-bold text-red-700 shrink-0 ml-2">
-                {liveSosStatus?.status === 'ACCEPTED' ? 'LIVE' : `0:${String(countdown).padStart(2, '0')}`}
+                {liveSosStatus?.status === 'ACCEPTED' ? 'LIVE' : formatCountdown(countdown)}
               </span>
             </div>
 
