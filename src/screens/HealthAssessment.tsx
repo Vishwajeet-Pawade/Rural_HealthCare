@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon, Card, HealthIDCard } from '../components/shared';
+import { createConsultation, getPatients, getCurrentUser } from '../api/client';
 
 interface Props { navigate: (s: string) => void; }
 
@@ -16,6 +17,24 @@ export default function HealthAssessment({ navigate }: Props) {
   const [duration, setDuration] = useState('');
   const [vitals, setVitals] = useState({ temp: '', bp: '', hr: '', spo2: '', weight: '' });
   const [obs, setObs] = useState('');
+  const [realPatients, setRealPatients] = useState<any[]>([]);
+  const [dbUser, setDbUser] = useState<any>(null);
+  const [selectedPatient, setSelectedPatient] = useState<any>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    getCurrentUser().then((user) => {
+      setDbUser(user);
+      if (user?.role === 'PATIENT' && user.patientProfile) {
+        setSelectedPatient(user.patientProfile);
+        setStep('vitals');
+      } else {
+        getPatients().then(setRealPatients).catch(() => {});
+      }
+    }).catch(() => {
+      getPatients().then(setRealPatients).catch(() => {});
+    });
+  }, []);
 
   function toggleSymptom(s: string) {
     setSelectedSymptoms(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
@@ -33,6 +52,43 @@ export default function HealthAssessment({ navigate }: Props) {
   }
 
   const steps = ['Patient', 'Vitals', 'Symptoms', 'Review'];
+  const stepIdx = { patient: 0, vitals: 1, symptoms: 2, review: 3 }[step];
+
+  const fallbackPatients = [
+    { id: 'RHC-2026-3M9P71', healthId: 'RHC-2026-3M9P71', name: 'Ramesh Kumar', age: 45, village: 'Khetolai' },
+    { id: 'RHC-2026-8F4K92', healthId: 'RHC-2026-8F4K92', name: 'Priya Devi', age: 28, village: 'Govindpur' },
+    { id: 'RHC-2026-2K8Q15', healthId: 'RHC-2026-2K8Q15', name: 'Mohan Lal', age: 67, village: 'Deshnok' },
+  ];
+  const patientList = realPatients.length > 0 ? realPatients : fallbackPatients;
+
+  async function handleSubmit() {
+    if (step === 'patient') { setStep('vitals'); return; }
+    if (step === 'vitals') { setStep('symptoms'); return; }
+    if (step === 'symptoms') { setStep('review'); return; }
+
+    setSubmitting(true);
+    try {
+      await createConsultation({
+        patientId: selectedPatient?.healthId || selectedPatient?.id,
+        workerName: dbUser?.fullName || dbUser?.workerProfile?.name || 'Health Worker',
+        symptoms: selectedSymptoms,
+        vitals: {
+          temperature: vitals.temp,
+          bloodPressure: vitals.bp,
+          heartRate: vitals.hr,
+          spo2: vitals.spo2,
+          weight: vitals.weight,
+        },
+        notes: obs,
+        riskLevel: (isAbnormal('temp', vitals.temp) || isAbnormal('hr', vitals.hr) || isAbnormal('spo2', vitals.spo2)) ? 'high' : 'moderate',
+      });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSubmitting(false);
+      navigate('ai-risk');
+    }
+  }
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -46,12 +102,10 @@ export default function HealthAssessment({ navigate }: Props) {
         </div>
       </div>
 
-      {/* Step bar */}
       <div className="flex items-center gap-2 mb-8">
         {steps.map((s, i) => {
-          const idx = steps.indexOf(step.charAt(0).toUpperCase() + step.slice(1).replace('-', ''));
-          const isCurrent = steps[i] === (step.charAt(0).toUpperCase() + step.slice(1));
-          const isDone = i < steps.indexOf(step.charAt(0).toUpperCase() + step.slice(1));
+          const isCurrent = i === stepIdx;
+          const isDone = i < stepIdx;
           return (
             <div key={s} className="flex items-center gap-2 flex-1">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all
@@ -66,7 +120,6 @@ export default function HealthAssessment({ navigate }: Props) {
       </div>
 
       <Card className="p-6 shadow-sm">
-        {/* Patient selection step */}
         {step === 'patient' && (
           <div className="space-y-4">
             <h2 className="font-display font-semibold text-gray-800">Select Patient</h2>
@@ -78,20 +131,16 @@ export default function HealthAssessment({ navigate }: Props) {
               </div>
             </div>
             <div className="space-y-2">
-              {[
-                { id: 'RHC-2026-3M9P71', name: 'Ramesh Kumar', age: 45, village: 'Khetolai' },
-                { id: 'RHC-2026-8F4K92', name: 'Priya Devi', age: 28, village: 'Govindpur' },
-                { id: 'RHC-2026-2K8Q15', name: 'Mohan Lal', age: 67, village: 'Deshnok' },
-              ].map(p => (
-                <button key={p.id} onClick={() => setStep('vitals')}
+              {patientList.map((p: any) => (
+                <button key={p.id || p.healthId} onClick={() => { setSelectedPatient(p); setStep('vitals'); }}
                   className="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-brand-300 hover:bg-brand-50 transition-all text-left">
                   <div className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-semibold text-sm">
-                    {p.name.split(' ').map(w=>w[0]).join('')}
+                    {(p.name || 'P').split(' ').map((w: string) => w[0]).join('')}
                   </div>
                   <div className="flex-1">
                     <div className="font-medium text-sm text-gray-900">{p.name}</div>
-                    <div className="text-xs text-gray-500">{p.age} · {p.village}</div>
-                    <div className="font-mono text-[10px] text-gray-400">{p.id}</div>
+                    <div className="text-xs text-gray-500">{p.age || '--'} · {p.village || p.address || 'N/A'}</div>
+                    <div className="font-mono text-[10px] text-gray-400">{p.healthId || p.id}</div>
                   </div>
                   <Icon name="chevron_right" size={15} className="text-gray-300" />
                 </button>
@@ -100,13 +149,12 @@ export default function HealthAssessment({ navigate }: Props) {
           </div>
         )}
 
-        {/* Vitals step */}
         {step === 'vitals' && (
           <div className="space-y-5">
             <div>
               <h2 className="font-display font-semibold text-gray-800">Record Vitals</h2>
               <div className="mt-1">
-                <HealthIDCard id="RHC-2026-3M9P71" name="Ramesh Kumar, 45M" size="sm" />
+                <HealthIDCard id={selectedPatient?.healthId || selectedPatient?.id || '—'} name={selectedPatient ? `${selectedPatient.name}, ${selectedPatient.age}${selectedPatient.gender?.[0] || ''}` : ''} size="sm" />
               </div>
             </div>
 
@@ -162,7 +210,6 @@ export default function HealthAssessment({ navigate }: Props) {
           </div>
         )}
 
-        {/* Symptoms step */}
         {step === 'symptoms' && (
           <div className="space-y-4">
             <h2 className="font-display font-semibold text-gray-800">Current Symptoms</h2>
@@ -203,11 +250,10 @@ export default function HealthAssessment({ navigate }: Props) {
           </div>
         )}
 
-        {/* Review step */}
         {step === 'review' && (
           <div className="space-y-4">
             <h2 className="font-display font-semibold text-gray-800">Review & Submit</h2>
-            <HealthIDCard id="RHC-2026-3M9P71" name="Ramesh Kumar, 45M" />
+            <HealthIDCard id={selectedPatient?.healthId || selectedPatient?.id || '—'} name={selectedPatient ? `${selectedPatient.name}, ${selectedPatient.age}${selectedPatient.gender?.[0] || ''}` : ''} />
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-gray-50 rounded-xl">
                 <div className="text-xs font-semibold text-gray-500 mb-2">VITALS</div>
@@ -236,13 +282,12 @@ export default function HealthAssessment({ navigate }: Props) {
             <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-2">
               <Icon name="brain" size={16} className="text-blue-600 shrink-0 mt-0.5" />
               <div className="text-xs text-blue-800">
-                <strong>AI Risk Assessment</strong> will be automatically generated based on vitals, symptoms, and patient history. You can review it before confirming the referral.
+                <strong>AI Risk Assessment</strong> will be automatically generated based on vitals, symptoms, and patient history.
               </div>
             </div>
           </div>
         )}
 
-        {/* Navigation */}
         <div className="flex gap-3 mt-6 pt-5 border-t border-gray-100">
           {step !== 'patient' && (
             <button onClick={() => setStep(s => s === 'review' ? 'symptoms' : s === 'symptoms' ? 'vitals' : 'patient')}
@@ -251,15 +296,11 @@ export default function HealthAssessment({ navigate }: Props) {
             </button>
           )}
           <button
-            onClick={() => {
-              if (step === 'patient') setStep('vitals');
-              else if (step === 'vitals') setStep('symptoms');
-              else if (step === 'symptoms') setStep('review');
-              else navigate('ai-risk');
-            }}
-            className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
+            onClick={handleSubmit}
+            disabled={submitting || (step === 'vitals' && !selectedPatient)}
+            className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
             {step === 'review' ? (
-              <><Icon name="brain" size={16} /> Generate AI Risk Assessment</>
+              <><Icon name="brain" size={16} /> {submitting ? 'Submitting...' : 'Generate AI Risk Assessment'}</>
             ) : (
               <>Continue <Icon name="chevron_right" size={16} /></>
             )}

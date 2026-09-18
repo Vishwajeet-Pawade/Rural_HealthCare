@@ -65,12 +65,14 @@ enum SosStatus {
 
 model User {
   id           String    @id @default(uuid())
-  phone        String    @unique
+  email        String    @unique
+  phone        String?   @unique
   role         Role
   fullName     String
   passwordHash String?
   pinHash      String?
   active       Boolean   @default(true)
+  isDemo       Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -101,6 +103,7 @@ model Facility {
   targetReferrals     Referral[]
   emergencyLogs       EmergencyAccessLog[]
   consentArtifacts    ConsentArtifact[]
+  medicines           Medicine[]
 }
 
 model Doctor {
@@ -116,6 +119,7 @@ model Doctor {
   distance              String?
   isPreferred           Boolean     @default(false)
   recommendationReasons String[]
+  isDemo                Boolean     @default(false)
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 
@@ -127,16 +131,21 @@ model Doctor {
 }
 
 model Worker {
-  id         String   @id @default(uuid())
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
-  workerType String   @default("ASHA")
-  village    String
-  district   String
-  state      String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  workerType   String   @default("ASHA")
+  workerCode   String?  @unique
+  village      String
+  subCentre    String?
+  assignedPhc  String?
+  district     String
+  state        String
+  status       String   @default("ACTIVE")
+  isDemo       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   patients Patient[]
 }
@@ -171,6 +180,7 @@ model Patient {
   registeredAt       String
   consentStatus      ConsentStatus  @default(GRANTED)
   vaccinationStatus  String         @default("Fully vaccinated")
+  isDemo             Boolean        @default(false)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
@@ -207,6 +217,7 @@ model Consultation {
   referralStatus   String       @default("none")
   followUpDate     String?
   syncStatus       SyncStatus   @default(SYNCED)
+  isDemo           Boolean      @default(false)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -229,6 +240,7 @@ model AIAssessment {
   confidence         Int
   generatedAt        String
   modelVersion       String        @default("v2.1")
+  isDemo             Boolean       @default(false)
   createdAt          DateTime      @default(now())
 }
 
@@ -253,6 +265,7 @@ model Referral {
   priority     ReferralPriority @default(ROUTINE)
   notes        String?
   aiSummary    String?
+  isDemo       Boolean          @default(false)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 }
@@ -302,6 +315,7 @@ model ConsentArtifact {
   consentManagerId String?       @default("mock-abdm-cm@sbx")
   signature        String?
   isMock           Boolean       @default(true)
+  isDemo           Boolean       @default(false)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 }
@@ -344,7 +358,33 @@ model AuditLog {
   dataAccessed String[]
   timestamp    String
   purpose      String
+  isDemo       Boolean  @default(false)
   createdAt    DateTime @default(now())
+}
+
+model Medicine {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  name          String
+  genericName   String
+  brand         String?
+  dosageForm    String
+  strength      String
+  category      String
+  stock         Int       @default(0)
+  minStockLevel Int       @default(10)
+  isLowStock    Boolean   @default(false)
+  batch         String?
+  expiryDate    String?
+  supplier      String?
+  facilityId    String?
+  facility      Facility? @relation(fields: [facilityId], references: [id])
+  facilityName  String?
+  unitPrice     Float     @default(0.0)
+  availability  String    @default("In Stock")
+  isDemo        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model SyncRecord {

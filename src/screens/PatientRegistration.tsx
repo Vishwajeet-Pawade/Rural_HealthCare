@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon, HealthIDCard } from '../components/shared';
+import { patients, getToken } from '../imports/api';
 
 interface Props { navigate: (s: string) => void; isOffline: boolean; }
 
@@ -13,9 +14,52 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
     emergencyName: '', emergencyRelation: '', emergencyPhone: '',
     allergies: '', conditions: '', medications: '',
   });
-  const generatedId = 'RHC-2026-4N7W28';
+  const [generatedId, setGeneratedId] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   function update(key: string, val: string) { setForm(f => ({ ...f, [key]: val })); }
+
+  async function handleSubmit() {
+    if(!form.allergies.trim() || !form.conditions.trim() || !form.medications.trim()) {
+      setError("Please fill out all mandatory medical info. Enter 'None' if applicable.");
+      return;
+    }
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const payload = {
+        name: form.name,
+        nameHi: form.nameHi,
+        dob: form.dob,
+        gender: form.gender,
+        bloodGroup: form.blood,
+        phone: form.phone,
+        village: form.village,
+        district: form.district,
+        state: form.state,
+        address: form.address,
+        emergencyContact: {
+          name: form.emergencyName,
+          relation: form.emergencyRelation,
+          phone: form.emergencyPhone
+        },
+        allergies: form.allergies ? form.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
+        chronicConditions: form.conditions ? form.conditions.split(',').map(s => s.trim()).filter(Boolean) : [],
+        currentMedications: form.medications ? form.medications.split(',').map(s => s.trim()).filter(Boolean) : [],
+      };
+      
+      const res = await patients.register(payload, getToken() || undefined);
+      if(res?.data?.patient?.healthId) {
+        setGeneratedId(res.data.patient.healthId);
+        setStep(3); // success
+      }
+    } catch(err: any) {
+      setError(err.message || 'Failed to register patient');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   const inputClass = "w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-transparent bg-white";
   const labelClass = "block text-xs font-medium text-gray-600 mb-1";
@@ -153,19 +197,19 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
             <p className="text-xs text-gray-500">Only collect what is known and relevant. Leave blank if unknown.</p>
             <div className="space-y-4">
               <div>
-                <label className={labelClass}>Known Allergies</label>
+                <label className={labelClass}>Known Allergies *</label>
                 <input value={form.allergies} onChange={e => update('allergies', e.target.value)}
-                  placeholder="e.g. Penicillin, Aspirin (comma separated)" className={inputClass} />
+                  placeholder="e.g. Penicillin, Aspirin (comma separated) or 'None'" className={inputClass} />
               </div>
               <div>
-                <label className={labelClass}>Existing Medical Conditions</label>
+                <label className={labelClass}>Existing Medical Conditions *</label>
                 <textarea value={form.conditions} onChange={e => update('conditions', e.target.value)}
-                  placeholder="e.g. Diabetes, Hypertension, Anaemia..." rows={2} className={`${inputClass} resize-none`} />
+                  placeholder="e.g. Diabetes, Hypertension, Anaemia, or 'None'..." rows={2} className={`${inputClass} resize-none`} />
               </div>
               <div>
-                <label className={labelClass}>Current Medications</label>
+                <label className={labelClass}>Current Medications *</label>
                 <textarea value={form.medications} onChange={e => update('medications', e.target.value)}
-                  placeholder="e.g. Metformin 500mg, Amlodipine 5mg..." rows={2} className={`${inputClass} resize-none`} />
+                  placeholder="e.g. Metformin 500mg, or 'None'..." rows={2} className={`${inputClass} resize-none`} />
               </div>
             </div>
 
@@ -247,17 +291,20 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
 
         {/* Navigation buttons */}
         {step < 3 && (
-          <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
-            {step > 0 && (
-              <button onClick={() => setStep(s => s - 1)}
-                className="px-5 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
-                Back
+          <div className="flex flex-col gap-3 mt-6 pt-4 border-t border-gray-100">
+            {error && <div className="text-red-500 text-sm text-center">{error}</div>}
+            <div className="flex gap-3">
+              {step > 0 && (
+                <button onClick={() => setStep(s => s - 1)} disabled={isSubmitting}
+                  className="px-5 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                  Back
+                </button>
+              )}
+              <button onClick={() => { if(step < 2) setStep(s => s + 1); else handleSubmit(); }} disabled={isSubmitting}
+                className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm disabled:opacity-50">
+                {isSubmitting ? 'Registering...' : (step < 2 ? 'Continue' : 'Register Patient')}
               </button>
-            )}
-            <button onClick={() => setStep(s => s + 1)}
-              className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm">
-              {step < 2 ? 'Continue' : 'Register Patient'}
-            </button>
+            </div>
           </div>
         )}
       </div>
