@@ -49,6 +49,9 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
       allergies: form.allergies ? form.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
       chronicConditions: form.conditions ? form.conditions.split(',').map(s => s.trim()).filter(Boolean) : [],
       currentMedications: form.medications ? form.medications.split(',').map(s => s.trim()).filter(Boolean) : [],
+      consent: {
+        granted: true,
+      },
     };
 
     const isDeviceOffline = isOffline || (typeof navigator !== 'undefined' && !navigator.onLine);

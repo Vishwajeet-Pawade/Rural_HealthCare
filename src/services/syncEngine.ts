@@ -50,12 +50,14 @@ export async function getPendingItems(): Promise<OutboxItem[]> {
 
 export async function saveOfflinePatient(data: any): Promise<OfflinePatient> {
   const id = data.id || data.healthId || `TEMP-PAT-${Date.now()}`;
+  const consent = data.consent || { granted: true };
+  const payload = { ...data, id, consent };
   const patientRecord: OfflinePatient = {
     id,
     name: data.name || 'Unknown Patient',
     village: data.village || 'Unknown Village',
     synced: false,
-    payload: { ...data, id },
+    payload,
     createdAt: new Date().toISOString(),
   };
 
@@ -63,7 +65,7 @@ export async function saveOfflinePatient(data: any): Promise<OfflinePatient> {
 
   await offlineDb.outboxQueue.add({
     action: 'CREATE_PATIENT',
-    payload: { ...data, id },
+    payload,
     createdAt: new Date().toISOString(),
   });
 
@@ -136,16 +138,70 @@ export async function flushOutbox(): Promise<{
 
       try {
         if (item.action === 'CREATE_PATIENT') {
-          await registerPatient(item.payload);
+          const res = await registerPatient(item.payload);
 
           if (item.id !== undefined) {
             await offlineDb.outboxQueue.delete(item.id);
           }
 
           const localId = item.payload.id || item.payload.healthId;
+          const realPatientId = res?.patient?.healthId || res?.patient?.id;
+
           if (localId) {
             await offlineDb.patients.update(localId, { synced: true });
           }
+
+          // Remap queued consultations from temporary patient ID to real server patient ID
+          if (localId && realPatientId && localId !== realPatientId) {
+            const tempIds = new Set([localId, item.payload.id, item.payload.healthId].filter(Boolean));
+
+            // 1. Update remaining items in current in-memory queue array so subsequent loop iterations use realPatientId
+            for (const remainingItem of queue) {
+              if (
+                remainingItem.action === 'CREATE_CONSULTATION' &&
+                remainingItem.payload &&
+                tempIds.has(remainingItem.payload.patientId)
+              ) {
+                remainingItem.payload.patientId = realPatientId;
+              }
+            }
+
+            // 2. Update queued CREATE_CONSULTATION items in IndexedDB outboxQueue
+            const queuedConsultations = await offlineDb.outboxQueue
+              .filter(
+                (qItem) =>
+                  qItem.action === 'CREATE_CONSULTATION' &&
+                  qItem.payload &&
+                  tempIds.has(qItem.payload.patientId)
+              )
+              .toArray();
+
+            for (const qc of queuedConsultations) {
+              if (qc.id !== undefined) {
+                await offlineDb.outboxQueue.update(qc.id, {
+                  payload: {
+                    ...qc.payload,
+                    patientId: realPatientId,
+                  },
+                });
+              }
+            }
+
+            // 3. Update local consultations table records
+            const localConsultations = await offlineDb.consultations
+              .filter((c) => tempIds.has(c.patientId))
+              .toArray();
+
+            for (const lc of localConsultations) {
+              await offlineDb.consultations.update(lc.id, {
+                patientId: realPatientId,
+                payload: lc.payload
+                  ? { ...lc.payload, patientId: realPatientId }
+                  : lc.payload,
+              });
+            }
+          }
+
           processed++;
         } else if (item.action === 'CREATE_CONSULTATION') {
           await createConsultation(item.payload);
