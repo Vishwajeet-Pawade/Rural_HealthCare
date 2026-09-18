@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon, HealthIDCard } from '../components/shared';
 import { patients, getToken } from '../imports/api';
+import { validateAadhaar } from '../utils/aadhaarValidator';
 
 interface Props { navigate: (s: string, patientId?: string) => void; isOffline: boolean; }
 
@@ -9,6 +10,8 @@ const STEPS = ['Personal Info', 'Contact & Location', 'Medical Info', 'Health ID
 export default function PatientRegistration({ navigate, isOffline }: Props) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
+    name: '', nameHi: '', dob: '', gender: '', blood: '', phone: '',
+    aadhaar: '', abhaAddress: '', abhaNumber: '',
     name: '', nameHi: '', dob: '', gender: 'Female', blood: '', phone: '',
     village: '', district: 'Bikaner', state: 'Rajasthan', address: '',
     emergencyName: '', emergencyRelation: '', emergencyPhone: '',
@@ -16,6 +19,7 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
   });
   const [consentGiven, setConsentGiven] = useState(true);
   const [generatedId, setGeneratedId] = useState('');
+  const [registeredPatient, setRegisteredPatient] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -37,6 +41,28 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
     setIsSubmitting(true);
     setError('');
     try {
+      const payload = {
+        name: form.name.trim(),
+        nameHi: form.nameHi.trim() || form.name.trim(),
+        dob: form.dob,
+        gender: form.gender,
+        bloodGroup: form.blood || 'Not known',
+        phone: form.phone.trim(),
+        village: form.village.trim(),
+        district: form.district.trim(),
+        state: form.state.trim(),
+        address: form.address.trim() || `${form.village.trim()}, ${form.district.trim()}, ${form.state.trim()}`,
+        emergencyContact: {
+          name: form.emergencyName.trim(),
+          relation: form.emergencyRelation.trim() || 'Family',
+          phone: form.emergencyPhone.trim()
+        },
+        allergies: form.allergies ? form.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
+        chronicConditions: form.conditions ? form.conditions.split(',').map(s => s.trim()).filter(Boolean) : [],
+        currentMedications: form.medications ? form.medications.split(',').map(s => s.trim()).filter(Boolean) : [],
+        abhaAddress: form.abhaAddress.trim() || undefined,
+        abhaNumber: form.abhaNumber.trim() || undefined,
+        consent: { granted: true },
       const payload: any = {
         name: form.name.trim(),
         nameHi: form.nameHi.trim() || undefined,
@@ -67,8 +93,10 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
       }
       
       const res = await patients.register(payload, getToken() || undefined);
-      if(res?.data?.patient?.healthId) {
-        setGeneratedId(res.data.patient.healthId);
+      const newPatient = res?.data?.patient;
+      if(newPatient?.healthId) {
+        setRegisteredPatient(newPatient);
+        setGeneratedId(newPatient.healthId);
         setStep(3); // success
       }
     } catch(err: any) {
@@ -149,6 +177,22 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
                   <option value="">Not known</option>
                   {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(b => <option key={b}>{b}</option>)}
                 </select>
+              </div>
+              <div className="sm:col-span-2 pt-2 border-t border-gray-100">
+                <label className={labelClass}>Aadhaar Number (12 Digits) *</label>
+                <input
+                  value={form.aadhaar}
+                  onChange={e => {
+                    update('aadhaar', e.target.value);
+                    if (error) setError('');
+                  }}
+                  maxLength={14}
+                  placeholder="e.g. 9876 5432 1098"
+                  className={`${inputClass} font-mono`}
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  12-digit Aadhaar number is mandatory for ABDM ABHA ID generation & identity verification.
+                </p>
               </div>
             </div>
           </div>
@@ -262,6 +306,18 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
             </div>
             <div>
               <h2 className="font-display text-xl font-bold text-gray-900">Registration Successful!</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                <strong>{registeredPatient?.name || form.name}</strong> has been registered in the database.
+              </p>
+              {registeredPatient?.abhaAddress && (
+                <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-teal-50 border border-teal-200 rounded-full text-xs text-teal-700 font-mono">
+                  <Icon name="shield" size={12} /> ABHA: {registeredPatient.abhaAddress}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-center">
+              <HealthIDCard id={generatedId} name={registeredPatient?.name || form.name} size="lg" />
               <p className="text-sm text-gray-500 mt-1">{form.name || 'Patient'} has been registered in the system.</p>
             </div>
 
@@ -301,6 +357,7 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
               <p className="text-[10px] text-gray-400 mt-3 font-mono">{generatedId}</p>
             </div>
 
+            <button onClick={() => navigate('patient-profile', registeredPatient?.id || registeredPatient?.healthId || generatedId)}
             <button onClick={() => navigate('patient-profile', generatedId)}
               className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors">
               View Patient Profile
@@ -314,17 +371,64 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
         {/* Navigation buttons */}
         {step < 3 && (
           <div className="flex flex-col gap-3 mt-6 pt-4 border-t border-gray-100">
-            {error && <div className="text-red-500 text-sm text-center">{error}</div>}
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium text-center">
+                {error}
+              </div>
+            )}
             <div className="flex gap-3">
               {step > 0 && (
-                <button onClick={() => setStep(s => s - 1)} disabled={isSubmitting}
-                  className="px-5 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                <button
+                  onClick={() => {
+                    setError('');
+                    setStep(s => s - 1);
+                  }}
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
                   Back
                 </button>
               )}
-              <button onClick={() => { if(step < 2) setStep(s => s + 1); else handleSubmit(); }} disabled={isSubmitting}
-                className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm disabled:opacity-50">
-                {isSubmitting ? 'Registering...' : (step < 2 ? 'Continue' : 'Register Patient')}
+              <button
+                onClick={() => {
+                  setError('');
+                  if (step === 0) {
+                    if (!form.name.trim()) {
+                      setError('Full Name is required.');
+                      return;
+                    }
+                    if (!form.dob) {
+                      setError('Date of Birth is required.');
+                      return;
+                    }
+                    if (!form.gender) {
+                      setError('Gender selection is required.');
+                      return;
+                    }
+                    const aadhaarCheck = validateAadhaar(form.aadhaar);
+                    if (!aadhaarCheck.isValid) {
+                      setError(aadhaarCheck.error || 'Valid Aadhaar number is required.');
+                      return;
+                    }
+                    setStep(1);
+                  } else if (step === 1) {
+                    if (!form.phone.trim()) {
+                      setError('Mobile Number is required.');
+                      return;
+                    }
+                    if (!form.village.trim()) {
+                      setError('Village / Town is required.');
+                      return;
+                    }
+                    setStep(2);
+                  } else {
+                    handleSubmit();
+                  }
+                }}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm disabled:opacity-50"
+              >
+                {isSubmitting ? 'Registering...' : step < 2 ? 'Continue' : 'Register Patient'}
               </button>
             </div>
           </div>

@@ -424,6 +424,17 @@ export default function App() {
       });
   }, []);
 
+  // Enforce role-based navigation lock
+  useEffect(() => {
+    if (role !== 'login') {
+      const allowedItems = NAV[role] || [];
+      const allowedScreenIds = allowedItems.map((item) => item.id);
+      if (!allowedScreenIds.includes(screen)) {
+        setScreen(DEFAULT_SCREEN[role]);
+      }
+    }
+  }, [role, screen]);
+
   function fireSOS(
     from: string,
     fromRole: string,
