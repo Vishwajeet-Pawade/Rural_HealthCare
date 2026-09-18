@@ -11,6 +11,7 @@ import {
   loginUser,
   FacilityItem,
 } from '../api/client';
+import { validateAadhaar } from '../utils/aadhaarValidator';
 
 interface CurrentUser {
   id?: string;
@@ -293,6 +294,12 @@ export default function LoginScreen({
   }
 
   function handleSimulateCreateAbha() {
+    const aadhaarCheck = validateAadhaar(aadhaarSimInput);
+    if (!aadhaarCheck.isValid) {
+      setErrorMessage(aadhaarCheck.error || 'Aadhaar validation failed.');
+      return;
+    }
+
     setLoading(true);
     setErrorMessage(null);
 
