@@ -16,6 +16,7 @@ import {
 import {
   getWorkerDashboardData,
   getCurrentUser,
+  dispatchSosAlert,
 } from '../api/client';
 
 interface ActiveSosAlert {
@@ -633,7 +634,17 @@ export default function WorkerDashboard({
                 </button>
 
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    try {
+                      await dispatchSosAlert({
+                        fromName: 'ASHA Worker',
+                        role: 'ASHA Worker',
+                        patientHealthId: 'RHC-2026-8F4K92',
+                        location: 'Lunkaransar Sector 4',
+                      });
+                    } catch (e) {
+                      console.warn('Backend SOS dispatch failed, falling back to local state:', e);
+                    }
                     onSOS();
                     setSosSent(true);
                     setSosConfirm(false);
