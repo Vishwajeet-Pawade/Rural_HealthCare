@@ -537,6 +537,10 @@ export async function registerPatient(
           });
 
           return patient;
+        },
+        {
+          maxWait: 10000,
+          timeout: 20000,
         }
       );
 

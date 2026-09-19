@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
- import { Icon, Card, HealthIDCard } from '../components/shared';
+import { Icon, Card, HealthIDCard } from '../components/shared';
 import {
   createConsultation,
   getPatients,
@@ -12,6 +12,7 @@ import {
   type StandardizedSymptom,
   type RiskPredictionResponse,
 } from '../api/client';
+import { saveOfflineConsultation, syncEngine } from '../services/syncEngine';
 
 interface Props {
   navigate: (s: string) => void;
@@ -238,11 +239,48 @@ export default function HealthAssessment({ navigate, patientId }: Props) {
     setSubmitting(true);
     setSubmitError('');
 
-    try {
-      const targetPatientId = selectedPatient?.healthId || selectedPatient?.id;
-      const combinedNotes = `Duration: ${duration} · Severity: ${symptomSeverity}. ${obs}`.trim();
+    const targetPatientId = selectedPatient?.healthId || selectedPatient?.id;
+    const combinedNotes = `Duration: ${duration} · Severity: ${symptomSeverity}. ${obs}`.trim();
+    const mappedRiskLevel = (realtimeRisk?.riskLevel?.toLowerCase() as any) ||
+      (isAbnormal('temp', vitals.temp) || isAbnormal('hr', vitals.hr) || isAbnormal('spo2', vitals.spo2)
+        ? 'high'
+        : 'moderate');
 
-      // 1. Generate and persist XGBoost AI Risk Assessment in PostgreSQL
+    const payload = {
+      patientId: targetPatientId,
+      workerName: dbUser?.fullName || dbUser?.workerProfile?.name || (dbUser?.role === 'DOCTOR' ? 'Attending Doctor' : 'Health Worker'),
+      doctorId: dbUser?.doctorProfile?.id,
+      doctorName: dbUser?.role === 'DOCTOR' ? (dbUser?.fullName || 'Doctor') : undefined,
+      symptoms: selectedSymptoms,
+      vitals: {
+        temperature: vitals.temp,
+        bloodPressure: vitals.bp,
+        heartRate: vitals.hr,
+        spo2: vitals.spo2,
+        weight: vitals.weight,
+      },
+      notes: combinedNotes,
+      riskLevel: mappedRiskLevel,
+    };
+
+    const isDeviceOffline =
+      !syncEngine.isOnline() ||
+      (typeof navigator !== 'undefined' && !navigator.onLine);
+
+    if (isDeviceOffline) {
+      try {
+        await saveOfflineConsultation(payload);
+      } catch (offlineErr) {
+        console.error('Failed to save consultation offline:', offlineErr);
+      } finally {
+        setSubmitting(false);
+        navigate('ai-risk');
+      }
+      return;
+    }
+
+    try {
+      // 1. Generate and persist XGBoost AI Risk Assessment in PostgreSQL (when online)
       await generateAiAssessment({
         patientId: targetPatientId,
         symptoms: selectedSymptoms,
@@ -252,31 +290,28 @@ export default function HealthAssessment({ navigate, patientId }: Props) {
       }).catch((e) => console.warn('AI Assessment auto-persistence notice:', e));
 
       // 2. Record consultation with mapped XGBoost risk level
-      const mappedRiskLevel = (realtimeRisk?.riskLevel?.toLowerCase() as any) ||
-        (isAbnormal('temp', vitals.temp) || isAbnormal('hr', vitals.hr) || isAbnormal('spo2', vitals.spo2)
-          ? 'high'
-          : 'moderate');
-
-      await createConsultation({
-        patientId: targetPatientId,
-        workerName: dbUser?.fullName || dbUser?.workerProfile?.name || (dbUser?.role === 'DOCTOR' ? 'Attending Doctor' : 'Health Worker'),
-        doctorId: dbUser?.doctorProfile?.id,
-        doctorName: dbUser?.role === 'DOCTOR' ? (dbUser?.fullName || 'Doctor') : undefined,
-        symptoms: selectedSymptoms,
-        vitals: {
-          temperature: vitals.temp,
-          bloodPressure: vitals.bp,
-          heartRate: vitals.hr,
-          spo2: vitals.spo2,
-          weight: vitals.weight,
-        },
-        notes: combinedNotes,
-        riskLevel: mappedRiskLevel,
-      });
-
+      await createConsultation(payload);
       navigate('ai-risk');
     } catch (e: any) {
       console.error(e);
+      const isNetworkError =
+        !syncEngine.isOnline() ||
+        (typeof navigator !== 'undefined' && !navigator.onLine) ||
+        e.name === 'TypeError' ||
+        e.message?.includes('Network error') ||
+        e.message?.includes('Failed to fetch') ||
+        e.message?.includes('network');
+
+      if (isNetworkError) {
+        try {
+          await saveOfflineConsultation(payload);
+          navigate('ai-risk');
+          return;
+        } catch (offlineErr) {
+          console.error('Failed to fallback save consultation offline:', offlineErr);
+        }
+      }
+
       setSubmitError(
         e?.message || 'Patient consent required to record clinical consultation and assessment.'
       );
@@ -298,6 +333,12 @@ export default function HealthAssessment({ navigate, patientId }: Props) {
           <h1 className="font-display text-xl font-bold text-gray-900">New Health Assessment</h1>
           <p className="text-xs text-gray-500">Guided assessment with AI-assisted risk evaluation</p>
         </div>
+        {typeof navigator !== 'undefined' && !navigator.onLine && (
+          <div className="ml-auto px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 font-semibold flex items-center gap-1">
+            <Icon name="wifi_off" size={11} />
+            Offline
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 mb-8">
@@ -1096,6 +1137,12 @@ export default function HealthAssessment({ navigate, patientId }: Props) {
                 {submitting ? 'Recording Assessment…' : 'Generate AI Risk & Save'}
               </button>
             </div>
+            {typeof navigator !== 'undefined' && !navigator.onLine && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                <Icon name="wifi_off" size={14} className="shrink-0 text-amber-700" />
+                <span>Operating offline. Consultation will be saved to local offline database and synced when connectivity returns.</span>
+              </div>
+            )}
           </div>
         )}
       </Card>
