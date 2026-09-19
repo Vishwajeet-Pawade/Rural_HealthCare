@@ -108,11 +108,13 @@ async function request<T>(
     }
 
     if (!res.ok) {
-      throw new Error(
+      const specificError =
+        json.errors?.map((e: any) => e.message).join(', ') ||
+        (json.message && json.message !== 'Validation failed' ? json.message : undefined) ||
         json.message ||
-          json.errors?.[0]?.message ||
-          `Request failed with status ${res.status}`
-      );
+        `Request failed with status ${res.status}`;
+
+      throw new Error(specificError);
     }
 
     return json;
