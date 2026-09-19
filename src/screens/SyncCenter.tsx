@@ -89,12 +89,13 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
   const synced = records.filter(r => r.status === 'synced');
   const failed = records.filter(r => r.status === 'failed');
 
-  const localSyncedRecords: (SyncRecord & { queueId?: number; localPatientId?: string; localConsultationId?: string })[] = [
+  const localSyncedRecords: (SyncRecord & { queueId?: number; localPatientId?: string; localConsultationId?: string; healthId?: string })[] = [
     ...syncedPatients.map(p => ({
       id: `local-pat-${p.id}`,
       localPatientId: p.id,
       type: 'Patient Registration' as const,
-      description: `${p.name} (${p.healthId || p.id})`,
+      description: `Patient: ${p.name}`,
+      healthId: p.healthId || p.id,
       status: 'synced' as const,
       recordedAt: p.createdAt ? new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Local record',
       syncedAt: 'Synced to Cloud ✓',
@@ -112,16 +113,17 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
 
   const totalSyncedCount = synced.length + localSyncedRecords.length;
 
-  const outboxRecords: (SyncRecord & { queueId?: number })[] = outboxItems.map(item => ({
+  const outboxRecords: (SyncRecord & { queueId?: number; tempId?: string })[] = outboxItems.map(item => ({
     id: `queue-${item.id}`,
     queueId: item.id,
     type: item.action === 'CREATE_PATIENT' ? 'Patient Registration' : item.action === 'CREATE_CONSULTATION' ? 'Consultation' : item.action,
-    description: item.payload?.name ? `${item.payload.name} (Offline outbox)` : item.payload?.patientId ? `Consultation for ${item.payload.patientId} (Offline outbox)` : `Offline ${item.action}`,
-    status: 'pending',
+    description: item.payload?.name ? `Patient: ${item.payload.name}` : item.payload?.patientId ? `Consultation for ${item.payload.patientId}` : `Offline ${item.action}`,
+    tempId: item.payload?.id || item.payload?.healthId,
+    status: 'pending' as const,
     recordedAt: new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   }));
 
-  const allRecords: (SyncRecord & { queueId?: number; localPatientId?: string; localConsultationId?: string })[] = [
+  const allRecords: (SyncRecord & { queueId?: number; localPatientId?: string; localConsultationId?: string; healthId?: string; tempId?: string })[] = [
     ...outboxRecords,
     ...localSyncedRecords,
     ...records,
@@ -242,8 +244,18 @@ export default function SyncCenter({ navigate, isOffline }: Props) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <div className="text-sm font-medium text-gray-900">{record.description}</div>
-                    <div className="text-xs text-gray-500">{record.type}</div>
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{record.type}</div>
+                    <div className="text-sm font-semibold text-gray-900">{record.description}</div>
+                    {record.healthId && (
+                      <div className="text-xs font-mono text-brand-700 font-semibold mt-0.5">
+                        Health ID: {record.healthId}
+                      </div>
+                    )}
+                    {record.status === 'pending' && record.tempId && (
+                      <div className="text-xs font-mono text-amber-700 mt-0.5">
+                        Temporary ID: {record.tempId}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <SyncBadge status={record.status} />

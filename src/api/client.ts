@@ -114,7 +114,10 @@ async function request<T>(
         json.message ||
         `Request failed with status ${res.status}`;
 
-      throw new Error(specificError);
+      const error: any = new Error(specificError);
+      error.status = res.status;
+      error.data = json;
+      throw error;
     }
 
     return json;
@@ -624,6 +627,20 @@ export async function getPatientByHealthId(
     );
 
   return res.data;
+}
+
+export async function verifyPatientInCloud(
+  healthId: string
+): Promise<{ exists: boolean; patient?: any; error?: string }> {
+  try {
+    const data = await getPatientByHealthId(healthId);
+    if (data?.patient) {
+      return { exists: true, patient: data.patient };
+    }
+    return { exists: false };
+  } catch (err: any) {
+    return { exists: false, error: err.message };
+  }
 }
 
 // ─── Consultations ───────────────────────────────────────────────────────────

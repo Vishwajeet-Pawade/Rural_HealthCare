@@ -21,8 +21,16 @@ function notifySubscribers(): void {
 let simulatedOffline = false;
 
 export function setSimulatedOffline(offline: boolean): void {
+  const wasOffline = simulatedOffline;
   simulatedOffline = offline;
   notifySubscribers();
+  if (wasOffline && !offline) {
+    if (typeof navigator !== 'undefined' ? navigator.onLine : true) {
+      flushOutbox().catch((err) => {
+        console.warn('Auto flush on reconnect (simulated) failed:', err);
+      });
+    }
+  }
 }
 
 export function isSimulatedOffline(): boolean {

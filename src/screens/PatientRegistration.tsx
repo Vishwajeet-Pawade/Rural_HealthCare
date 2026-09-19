@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Icon, HealthIDCard } from '../components/shared';
-import { patients, getToken } from '../imports/api';
+import { registerPatient } from '../api/client';
 import { saveOfflinePatient, syncEngine } from '../services/syncEngine';
 
 interface Props { navigate: (s: string) => void; isOffline: boolean; }
@@ -22,7 +22,7 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
 
   function update(key: string, val: string) { setForm(f => ({ ...f, [key]: val })); }
 
-  async function handleSubmit(forceOffline = false) {
+  async function handleSubmit() {
     if(!form.allergies.trim() || !form.conditions.trim() || !form.medications.trim()) {
       setError("Please fill out all mandatory medical info. Enter 'None' if applicable.");
       return;
@@ -38,6 +38,12 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
       cleanEmergencyPhone.length === 10
     );
 
+    const parseList = (str: string) => {
+      const trimmed = str.trim();
+      if (!trimmed || trimmed.toLowerCase() === 'none') return [];
+      return trimmed.split(',').map(s => s.trim()).filter(Boolean);
+    };
+
     const payload: any = {
       name: form.name.trim(),
       nameHi: form.nameHi?.trim() || undefined,
@@ -49,9 +55,9 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
       district: form.district.trim(),
       state: form.state.trim(),
       address: form.address?.trim() || undefined,
-      allergies: form.allergies ? form.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
-      chronicConditions: form.conditions ? form.conditions.split(',').map(s => s.trim()).filter(Boolean) : [],
-      currentMedications: form.medications ? form.medications.split(',').map(s => s.trim()).filter(Boolean) : [],
+      allergies: parseList(form.allergies),
+      chronicConditions: parseList(form.conditions),
+      currentMedications: parseList(form.medications),
       consent: {
         granted: true,
       },
@@ -65,7 +71,10 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
       };
     }
 
-    const isDeviceOffline = forceOffline || isOffline || !syncEngine.isOnline();
+    const isDeviceOffline =
+      isOffline ||
+      !syncEngine.isOnline() ||
+      (typeof navigator !== 'undefined' && !navigator.onLine);
 
     if (isDeviceOffline) {
       try {
@@ -74,7 +83,7 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
         setIsSavedOffline(true);
         setStep(3); // success
       } catch (err: any) {
-        setError(err.message || 'Failed to save patient offline');
+        setError(err.message || 'Failed to save patient locally');
       } finally {
         setIsSubmitting(false);
       }
@@ -82,21 +91,46 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
     }
 
     try {
-      const res = await patients.register(payload, getToken() || undefined);
-      if(res?.data?.patient?.healthId) {
-        setGeneratedId(res.data.patient.healthId);
+      const res = await registerPatient(payload);
+      const healthId = res?.patient?.healthId || res?.patient?.id;
+      if (healthId) {
+        setGeneratedId(healthId);
         setIsSavedOffline(false);
         setStep(3); // success
+      } else {
+        throw new Error('No Health ID returned from server');
       }
     } catch(err: any) {
-      const isNetworkError =
+      // Check if this was a validation or business logic error from backend (HTTP 4xx status)
+      const isHttpValidationOrAuthError = Boolean(
+        err.status &&
+        err.status >= 400 &&
+        err.status < 500
+      );
+      const isDuplicateError =
+        err.status === 409 ||
+        err.message?.includes('already registered') ||
+        err.message?.includes('Conflict');
+
+      if (isHttpValidationOrAuthError || isDuplicateError) {
+        // Validation/auth/duplicate error: DO NOT fall back to offline outbox!
+        setError(err.message || 'Validation failed. Please check the patient details.');
+        return;
+      }
+
+      // Genuine network failure: offline, fetch rejected, TypeError, server unreachable
+      const isNetworkFailure =
+        !err.status ||
         !syncEngine.isOnline() ||
+        (typeof navigator !== 'undefined' && !navigator.onLine) ||
         err.name === 'TypeError' ||
         err.message?.includes('Failed to fetch') ||
+        err.message?.includes('Network error') ||
         err.message?.includes('NetworkError') ||
-        err.message?.includes('network');
+        err.message?.includes('Failed to connect') ||
+        err.message?.includes('unreachable');
 
-      if (isNetworkError) {
+      if (isNetworkFailure) {
         try {
           const offlinePatient = await saveOfflinePatient(payload);
           setGeneratedId(offlinePatient.id);
@@ -104,11 +138,12 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
           setStep(3); // success
           return;
         } catch (saveErr: any) {
-          setError(saveErr.message || 'Failed to save patient offline');
+          setError(saveErr.message || 'Failed to save patient locally');
           return;
         }
       }
-      setError(err.message || 'Failed to register patient');
+
+      setError(err.message || 'Failed to register patient. Please check your connection.');
     } finally {
       setIsSubmitting(false);
     }
@@ -293,38 +328,44 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
         {/* Step 4: Health ID Generated */}
         {step === 3 && (
           <div className="text-center space-y-6">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <Icon name="check" size={28} className="text-green-600" />
+            <div className={`w-16 h-16 ${isSavedOffline ? 'bg-amber-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto`}>
+              <Icon name={isSavedOffline ? 'wifi_off' : 'check'} size={28} className={isSavedOffline ? 'text-amber-600' : 'text-green-600'} />
             </div>
             <div>
-              <h2 className="font-display text-xl font-bold text-gray-900">Registration Successful!</h2>
-              <p className="text-sm text-gray-500 mt-1">{form.name || 'Anita Meena'} has been registered in the system.</p>
+              <h2 className="font-display text-xl font-bold text-gray-900">
+                {isSavedOffline ? 'Patient saved locally' : 'Patient registered successfully'}
+              </h2>
+              <p className="text-sm text-gray-500 mt-1 font-mono">
+                {isSavedOffline ? `Temporary ID: ${generatedId}` : `Health ID: ${generatedId}`}
+              </p>
             </div>
 
             <div className="flex justify-center">
               <HealthIDCard id={generatedId} name={form.name || 'Anita Meena'} size="lg" />
             </div>
 
-            {(isOffline || isSavedOffline) ? (
-              <div className="flex flex-col items-center gap-2 text-xs text-amber-800 bg-amber-50 rounded-xl p-4 border border-amber-200">
+            {isSavedOffline ? (
+              <div className="flex flex-col items-center gap-1.5 text-xs text-amber-800 bg-amber-50 rounded-xl p-4 border border-amber-200">
                 <div className="flex items-center gap-2 font-semibold">
                   <Icon name="wifi_off" size={14} />
-                  Record saved locally to Dexie offline queue (1 pending sync)
+                  Patient saved locally
                 </div>
                 <p className="text-amber-700 text-center">
-                  This record is now queued in IndexedDB. Go to Offline Mode or Sync Center to see the 1 pending record and click &quot;Sync Now&quot;.
+                  It will automatically sync when internet connection is restored.
                 </p>
-                <button
-                  onClick={() => navigate('offline')}
-                  className="mt-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-medium transition-colors text-xs"
-                >
-                  Go to Offline Mode &amp; Sync
-                </button>
+                <div className="mt-1 text-[11px] font-mono text-amber-900 bg-amber-100/70 px-2.5 py-1 rounded-md">
+                  Temporary ID: {generatedId}
+                </div>
               </div>
             ) : (
-              <div className="flex items-center justify-center gap-2 text-xs text-green-700 bg-green-50 rounded-xl px-4 py-2.5 border border-green-200">
-                <Icon name="check" size={13} />
-                Registered directly to server. Real ID: {generatedId}
+              <div className="flex flex-col items-center gap-1 text-xs text-green-800 bg-green-50 rounded-xl px-4 py-3 border border-green-200">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Icon name="check" size={14} className="text-green-600" />
+                  Patient registered successfully
+                </div>
+                <p className="text-green-700 font-mono">
+                  Health ID: {generatedId}
+                </p>
               </div>
             )}
 
@@ -374,20 +415,9 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
                   Back
                 </button>
               )}
-              {step === 2 && !isOffline && (
-                <button
-                  type="button"
-                  onClick={() => handleSubmit(true)}
-                  disabled={isSubmitting}
-                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl transition-colors text-sm disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  <Icon name="wifi_off" size={14} />
-                  Save Offline (Queue)
-                </button>
-              )}
               <button onClick={() => { if(step < 2) setStep(s => s + 1); else handleSubmit(); }} disabled={isSubmitting}
                 className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm disabled:opacity-50">
-                {isSubmitting ? 'Registering...' : (step < 2 ? 'Continue' : isOffline ? 'Save Offline (Queue Patient)' : 'Register Patient (Online)')}
+                {step < 2 ? 'Continue' : isSubmitting ? 'Saving Patient...' : 'Save Patient'}
               </button>
             </div>
           </div>
