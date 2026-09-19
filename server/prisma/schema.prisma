@@ -134,6 +134,7 @@ model Doctor {
   respondedSosAlerts    SosAlert[]           @relation("RespondingDoctor")
   emergencyAccessLogs   EmergencyAccessLog[]
   targetReferrals       Referral[]
+  familyPatients        Patient[]                  @relation("PatientFamilyDoctor")
 }
 
 model Worker {
@@ -184,6 +185,9 @@ model Patient {
   healthWorkerId     String?
   healthWorker       Worker?        @relation(fields: [healthWorkerId], references: [id])
   healthWorkerName   String?
+  familyDoctorId     String?
+  familyDoctor       Doctor?        @relation("PatientFamilyDoctor", fields: [familyDoctorId], references: [id])
+  familyDoctorName   String?
   registeredAt       String
   consentStatus      ConsentStatus  @default(GRANTED)
   vaccinationStatus  String         @default("Fully vaccinated")

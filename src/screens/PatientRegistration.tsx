@@ -10,9 +10,8 @@ const STEPS = ['Personal Info', 'Contact & Location', 'Medical Info', 'Health ID
 export default function PatientRegistration({ navigate, isOffline }: Props) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
-    name: '', nameHi: '', dob: '', gender: '', blood: '', phone: '',
-    aadhaar: '', abhaAddress: '', abhaNumber: '',
     name: '', nameHi: '', dob: '', gender: 'Female', blood: '', phone: '',
+    aadhaar: '', abhaAddress: '', abhaNumber: '',
     village: '', district: 'Bikaner', state: 'Rajasthan', address: '',
     emergencyName: '', emergencyRelation: '', emergencyPhone: '',
     allergies: '', conditions: '', medications: '',

@@ -859,7 +859,7 @@ export async function getAiAssessments(
       ApiResponse<{
         assessments: any[];
       }>
-    >(`/ai${query}`);
+    >(`/ai-assessments${query}`);
 
   return res.data?.assessments || [];
 }
@@ -1048,5 +1048,66 @@ export async function updateSosStatus(id: string, status: string, respondingDoct
     body: JSON.stringify({ status, respondingDoctorId }),
   });
 
+  return res.data;
+}
+
+// ─── Patient Profile, Consent & Audit Helpers ─────────────────────────────────
+
+export async function updatePatient(patientId: string, payload: any): Promise<any> {
+  const res = await request<ApiResponse<any>>(`/patients/${encodeURIComponent(patientId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function getPatientAuditLogs(patientId: string): Promise<any[]> {
+  const res = await request<ApiResponse<{ auditLogs: any[] }>>(`/patients/${encodeURIComponent(patientId)}/audit-logs`);
+  return res.data?.auditLogs || [];
+}
+
+export async function getPatientAccessRequests(patientId: string): Promise<any[]> {
+  const res = await request<ApiResponse<{ requests: any[] }>>(`/patients/${encodeURIComponent(patientId)}/access-requests`);
+  return res.data?.requests || [];
+}
+
+export async function getWorkers(): Promise<any[]> {
+  const res = await request<ApiResponse<{ workers?: any[] }>>('/workers').catch(() => null);
+  if (res?.data?.workers && res.data.workers.length > 0) {
+    return res.data.workers;
+  }
+  const mockRes = await request<ApiResponse<{ workers?: any[]; data?: any[] }>>('/abdm/mock/workers').catch(() => null);
+  const data = mockRes?.data?.workers || (Array.isArray(mockRes?.data) ? mockRes.data : []);
+  return data;
+}
+
+export async function createPatientConsent(payload: {
+  patientId: string;
+  grantedTo: string;
+  role: string;
+  organization: string;
+  purpose: string;
+  dataScope: string[];
+  expiresAt?: string;
+}): Promise<any> {
+  const res = await request<ApiResponse<any>>('/abdm/mock/consents', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function revokePatientConsent(consentId: string, reason?: string): Promise<any> {
+  const res = await request<ApiResponse<any>>(`/abdm/mock/consents/${encodeURIComponent(consentId)}/revoke`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+  return res.data;
+}
+
+export async function approvePatientConsent(consentId: string): Promise<any> {
+  const res = await request<ApiResponse<any>>(`/abdm/mock/consents/${encodeURIComponent(consentId)}/approve`, {
+    method: 'POST',
+  });
   return res.data;
 }

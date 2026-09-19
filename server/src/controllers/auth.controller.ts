@@ -616,7 +616,16 @@ export async function getCurrentUser(
 
           workerProfile: true,
 
-          patientProfile: true,
+          patientProfile: {
+            include: {
+              familyDoctor: {
+                include: {
+                  facility: true,
+                },
+              },
+              healthWorker: true,
+            },
+          },
         },
       });
 

@@ -68,6 +68,10 @@ export interface CurrentUser {
     village?: string;
     district?: string;
     state?: string;
+    familyDoctorId?: string;
+    familyDoctorName?: string;
+    healthWorkerId?: string;
+    healthWorkerName?: string;
   };
 }
 
@@ -165,11 +169,6 @@ const NAV: Record<Role, NavItem[]> = {
       id: 'patient-profile',
       label: 'My Account',
       icon: 'user',
-    },
-    {
-      id: 'health-assessment',
-      label: 'Self Report',
-      icon: 'clipboard',
     },
     {
       id: 'consent',
@@ -526,6 +525,7 @@ export default function App() {
         role: fromRole,
         patientHealthId: patientId || 'RHC-EMERGENCY',
         location,
+        targetedDoctorId: currentUser?.patientProfile?.familyDoctorId || undefined,
       }).catch((err) => console.warn('SOS broadcast error:', err));
     }
   }

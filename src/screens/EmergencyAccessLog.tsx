@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Icon, Card, SectionHeader } from '../components/shared';
 import { getEmergencyLogs } from '../api/client';
 
-interface Props { navigate: (s: string) => void; }
+interface Props { navigate: (s: string) => void; isOffline?: boolean; }
 
 const LOG_ENTRIES = [
   {
@@ -184,7 +184,7 @@ export default function EmergencyAccessLog({ navigate, isOffline = false }: Prop
               <div className="sm:col-span-2">
                 <div className="text-[10px] font-bold text-gray-400 uppercase mb-1">Records Accessed</div>
                 <div className="flex flex-wrap gap-1.5">
-                  {entry.records.split(', ').map(r => (
+                  {entry.records.split(', ').map((r: string) => (
                     <span key={r} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">{r}</span>
                   ))}
                   {entry.addlRequested && (

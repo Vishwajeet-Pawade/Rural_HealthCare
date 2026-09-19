@@ -702,27 +702,34 @@ export async function getPatientById(
         },
 
         include: {
+          familyDoctor: {
+            include: {
+              facility: true,
+            },
+          },
+          healthWorker: true,
           consentEntries: {
-            take: 5,
             orderBy: {
               createdAt: 'desc',
             },
           },
-
+          auditEntries: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
           consultations: {
-            take: 5,
+            take: 20,
             orderBy: {
               createdAt: 'desc',
             },
           },
-
           referrals: {
-            take: 5,
+            take: 20,
             orderBy: {
               createdAt: 'desc',
             },
           },
-
           aiAssessments: {
             orderBy: {
               createdAt: 'desc',
@@ -744,6 +751,8 @@ export async function getPatientById(
         patient,
         consultations: patient.consultations,
         referrals: patient.referrals,
+        consents: patient.consentEntries,
+        auditLogs: patient.auditEntries,
       },
     });
   } catch (err) {
@@ -796,6 +805,202 @@ export async function getPatientByPhone(
     res.status(200).json({
       success: true,
       data: { patient },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Update patient profile (demographics, emergency info, Family Doctor, ASHA worker).
+ * PATCH /api/v1/patients/:id
+ */
+export async function updatePatient(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+    const user = (req as any).user;
+
+    const existing = await prisma.patient.findFirst({
+      where: {
+        OR: [{ id }, { healthId: id }, { abhaAddress: id }],
+      },
+    });
+
+    if (!existing) {
+      throw new AppError(`Patient '${id}' not found`, 404);
+    }
+
+    // Scoped Auth check: If caller is a PATIENT, verify ownership
+    if (user && user.role === 'PATIENT' && existing.userId && user.id !== existing.userId) {
+      throw new AppError('Unauthorized: You can only edit your own profile.', 403);
+    }
+
+    const {
+      bloodGroup,
+      allergies,
+      chronicConditions,
+      currentMedications,
+      emergencyContact,
+      familyDoctorId,
+      healthWorkerId,
+      phone,
+      village,
+      district,
+      state,
+      address,
+    } = req.body;
+
+    let familyDoctorName = existing.familyDoctorName;
+    if (familyDoctorId !== undefined) {
+      if (familyDoctorId) {
+        const doc = await prisma.doctor.findUnique({ where: { id: familyDoctorId } });
+        if (doc) {
+          familyDoctorName = doc.name;
+        }
+      } else {
+        familyDoctorName = null;
+      }
+    }
+
+    let healthWorkerName = existing.healthWorkerName;
+    if (healthWorkerId !== undefined) {
+      if (healthWorkerId) {
+        const wrk = await prisma.worker.findUnique({ where: { id: healthWorkerId } });
+        if (wrk) {
+          healthWorkerName = wrk.name;
+        }
+      } else {
+        healthWorkerName = null;
+      }
+    }
+
+    const updated = await prisma.patient.update({
+      where: { id: existing.id },
+      data: {
+        ...(bloodGroup !== undefined ? { bloodGroup } : {}),
+        ...(allergies !== undefined ? { allergies } : {}),
+        ...(chronicConditions !== undefined ? { chronicConditions } : {}),
+        ...(currentMedications !== undefined ? { currentMedications } : {}),
+        ...(emergencyContact !== undefined ? { emergencyContact } : {}),
+        ...(familyDoctorId !== undefined ? { familyDoctorId: familyDoctorId || null, familyDoctorName } : {}),
+        ...(healthWorkerId !== undefined ? { healthWorkerId: healthWorkerId || null, healthWorkerName } : {}),
+        ...(phone !== undefined ? { phone } : {}),
+        ...(village !== undefined ? { village } : {}),
+        ...(district !== undefined ? { district } : {}),
+        ...(state !== undefined ? { state } : {}),
+        ...(address !== undefined ? { address } : {}),
+      },
+      include: {
+        familyDoctor: { include: { facility: true } },
+        healthWorker: true,
+        consentEntries: { orderBy: { createdAt: 'desc' } },
+        auditEntries: { orderBy: { createdAt: 'desc' } },
+        consultations: { orderBy: { createdAt: 'desc' } },
+        referrals: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Patient profile updated successfully',
+      data: {
+        patient: updated,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Get patient audit logs.
+ * GET /api/v1/patients/:id/audit-logs
+ */
+export async function getPatientAuditLogs(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+    const user = (req as any).user;
+
+    const patient = await prisma.patient.findFirst({
+      where: {
+        OR: [{ id }, { healthId: id }, { abhaAddress: id }],
+      },
+    });
+
+    if (!patient) {
+      throw new AppError(`Patient '${id}' not found`, 404);
+    }
+
+    if (user && user.role === 'PATIENT' && patient.userId && user.id !== patient.userId) {
+      throw new AppError('Unauthorized to view this audit log.', 403);
+    }
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { patientId: patient.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { auditLogs },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Get pending access requests for patient.
+ * GET /api/v1/patients/:id/access-requests
+ */
+export async function getPatientAccessRequests(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+    const user = (req as any).user;
+
+    const patient = await prisma.patient.findFirst({
+      where: {
+        OR: [{ id }, { healthId: id }, { abhaAddress: id }],
+      },
+    });
+
+    if (!patient) {
+      throw new AppError(`Patient '${id}' not found`, 404);
+    }
+
+    if (user && user.role === 'PATIENT' && patient.userId && user.id !== patient.userId) {
+      throw new AppError('Unauthorized to view access requests.', 403);
+    }
+
+    const requests = await prisma.consentArtifact.findMany({
+      where: {
+        patientId: patient.id,
+        status: ConsentStatus.TEMPORARY,
+      },
+      include: {
+        facility: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { requests },
     });
   } catch (err) {
     next(err);

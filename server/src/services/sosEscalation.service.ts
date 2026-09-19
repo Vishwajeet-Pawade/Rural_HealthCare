@@ -43,7 +43,13 @@ export async function getEscalationRoster(facilityId?: string, preferredDoctorId
 
     // If preferred doctor requested, place first
     if (preferredDoctorId) {
-      const preferred = dbDoctors.find(d => d.id === preferredDoctorId || d.userId === preferredDoctorId);
+      let preferred = dbDoctors.find(d => d.id === preferredDoctorId || d.userId === preferredDoctorId);
+      if (!preferred) {
+        preferred = (await prisma.doctor.findFirst({
+          where: { OR: [{ id: preferredDoctorId }, { userId: preferredDoctorId }] },
+          include: { user: true },
+        })) as any;
+      }
       if (preferred) {
         roster.push({
           id: preferred.id,
@@ -118,7 +124,7 @@ export async function initializeSosAlert(data: {
       escalationIndex: 0,
       escalationDeadline: deadline,
       currentResponderId: initialResponder.id,
-      targetedDoctorId: null, // assigned dynamically to roster
+      targetedDoctorId: data.targetedDoctorId || (initialResponder.role === 'DOCTOR' ? initialResponder.id : null),
       vitalsSnapshot: data.vitalsSnapshot ? JSON.stringify(data.vitalsSnapshot) : null,
       timeoutSeconds: 90,
     },
