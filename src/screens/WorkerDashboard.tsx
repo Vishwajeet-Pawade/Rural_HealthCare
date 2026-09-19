@@ -700,11 +700,12 @@ export default function WorkerDashboard({
                 <button
                   onClick={async () => {
                     try {
+                      const activePt = patients.length > 0 ? patients[0] : null;
                       const res = await dispatchSosAlert({
-                        fromName: currentUser?.fullName || 'ASHA Sunita Yadav',
+                        fromName: dbUser?.fullName || 'ASHA Sunita Yadav',
                         role: 'ASHA Worker',
-                        patientHealthId: selectedPatient?.healthId || 'RHC-2026-8F4K92',
-                        location: selectedPatient?.village ? `${selectedPatient.village} Sector` : 'Lunkaransar Sector 4',
+                        patientHealthId: activePt?.healthId || 'RHC-2026-8F4K92',
+                        location: activePt?.village ? `${activePt.village} Sector` : 'Lunkaransar Sector 4',
                         targetedDoctorId: selectedDoctor?.id,
                         vitalsSnapshot: {
                           pulse: '118 bpm',

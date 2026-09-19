@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Icon, HealthIDCard } from '../components/shared';
 import { patients, getToken } from '../imports/api';
 import { validateAadhaar } from '../utils/aadhaarValidator';
+import { registerPatient } from '../api/client';
+import { saveOfflinePatient, syncEngine } from '../services/syncEngine';
 
 interface Props { navigate: (s: string, patientId?: string) => void; isOffline: boolean; }
 
@@ -10,9 +12,9 @@ const STEPS = ['Personal Info', 'Contact & Location', 'Medical Info', 'Health ID
 export default function PatientRegistration({ navigate, isOffline }: Props) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
-    name: '', nameHi: '', dob: '', gender: '', blood: '', phone: '',
-    aadhaar: '', abhaAddress: '', abhaNumber: '',
     name: '', nameHi: '', dob: '', gender: 'Female', blood: '', phone: '',
+    pin: '1234',
+    aadhaar: '', abhaAddress: '', abhaNumber: '',
     village: '', district: 'Bikaner', state: 'Rajasthan', address: '',
     emergencyName: '', emergencyRelation: '', emergencyPhone: '',
     allergies: '', conditions: '', medications: '',
@@ -20,7 +22,10 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
   const [consentGiven, setConsentGiven] = useState(true);
   const [generatedId, setGeneratedId] = useState('');
   const [registeredPatient, setRegisteredPatient] = useState<any>(null);
+  const [credentials, setCredentials] = useState<any>(null);
+  const [copiedToast, setCopiedToast] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavedOffline, setIsSavedOffline] = useState(false);
   const [error, setError] = useState('');
 
   function update(key: string, val: string) { setForm(f => ({ ...f, [key]: val })); }
@@ -39,22 +44,37 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
       return;
     }
     setIsSubmitting(true);
-    setError('');
     try {
+      const cleanPhone = form.phone.replace(/\D/g, '').slice(-10);
+      const cleanEmergencyPhone = form.emergencyPhone.replace(/\D/g, '').slice(-10);
+      const hasValidEmergency = Boolean(
+        form.emergencyName.trim().length >= 2 &&
+        form.emergencyRelation.trim() &&
+        cleanEmergencyPhone.length === 10
+      );
+
+      const parseList = (str: string) => {
+        const trimmed = str.trim();
+        if (!trimmed || trimmed.toLowerCase() === 'none') return [];
+        return trimmed.split(',').map(s => s.trim()).filter(Boolean);
+      };
+
       const payload: any = {
         name: form.name.trim(),
         nameHi: form.nameHi.trim() || undefined,
         dob: form.dob,
         gender: form.gender || 'Female',
-        bloodGroup: form.blood || undefined,
-        phone: form.phone.trim(),
+        bloodGroup: form.blood || 'Not known',
+        phone: cleanPhone,
+        pin: form.pin?.trim() || '1234',
+        aadhaar: form.aadhaar?.trim() || undefined,
         village: form.village.trim(),
         district: form.district.trim() || 'Bikaner',
         state: form.state.trim() || 'Rajasthan',
         address: form.address.trim() || undefined,
-        allergies: form.allergies ? form.allergies.split(',').map(s => s.trim()).filter(Boolean) : [],
-        chronicConditions: form.conditions ? form.conditions.split(',').map(s => s.trim()).filter(Boolean) : [],
-        currentMedications: form.medications ? form.medications.split(',').map(s => s.trim()).filter(Boolean) : [],
+        allergies: parseList(form.allergies),
+        chronicConditions: parseList(form.conditions),
+        currentMedications: parseList(form.medications),
         consent: {
           granted: consentGiven,
           purpose: 'Care delivery and longitudinal health record',
@@ -62,23 +82,99 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
         },
       };
 
-      if (form.emergencyName.trim() && form.emergencyPhone.trim()) {
+      if (hasValidEmergency) {
         payload.emergencyContact = {
           name: form.emergencyName.trim(),
           relation: form.emergencyRelation.trim() || 'Relative',
-          phone: form.emergencyPhone.trim(),
+          phone: cleanEmergencyPhone,
         };
       }
-      
+
+      const isDeviceOffline =
+        isOffline ||
+        !syncEngine.isOnline() ||
+        (typeof navigator !== 'undefined' && !navigator.onLine);
+
+      if (isDeviceOffline) {
+        try {
+          const offlinePatient = await saveOfflinePatient(payload);
+          setGeneratedId(offlinePatient.id);
+          setIsSavedOffline(true);
+          setCredentials({
+            phone: cleanPhone,
+            pin: form.pin?.trim() || '1234',
+            healthId: offlinePatient.id,
+            name: form.name.trim(),
+          });
+          setStep(3); // success
+        } catch (err: any) {
+          setError(err.message || 'Failed to save patient locally');
+        } finally {
+          setIsSubmitting(false);
+        }
+        return;
+      }
+
       const res = await patients.register(payload, getToken() || undefined);
       const newPatient = res?.data?.patient;
-      if(newPatient?.healthId) {
+      if (newPatient?.healthId) {
         setRegisteredPatient(newPatient);
         setGeneratedId(newPatient.healthId);
+        setIsSavedOffline(false);
+        setCredentials(res?.data?.credentials || {
+          phone: cleanPhone,
+          pin: form.pin?.trim() || '1234',
+          healthId: newPatient.healthId,
+          name: newPatient.name,
+        });
         setStep(3); // success
+      } else {
+        throw new Error('No Health ID returned from server');
       }
     } catch(err: any) {
-      setError(err.message || 'Failed to register patient');
+      // Check if this was a validation or business logic error from backend (HTTP 4xx status)
+      const isHttpValidationOrAuthError = Boolean(
+        err.status &&
+        err.status >= 400 &&
+        err.status < 500
+      );
+      const isDuplicateError =
+        err.status === 409 ||
+        err.message?.includes('already registered') ||
+        err.message?.includes('Conflict');
+
+      if (isHttpValidationOrAuthError || isDuplicateError) {
+        // Validation/auth/duplicate error: DO NOT fall back to offline outbox!
+        setError(err.message || 'Validation failed. Please check the patient details.');
+        return;
+      }
+
+      // Genuine network failure: offline, fetch rejected, TypeError, server unreachable
+      const isNetworkFailure =
+        !err.status ||
+        !syncEngine.isOnline() ||
+        (typeof navigator !== 'undefined' && !navigator.onLine) ||
+        err.name === 'TypeError' ||
+        err.message?.includes('Failed to fetch') ||
+        err.message?.includes('Network error') ||
+        err.message?.includes('NetworkError') ||
+        err.message?.includes('Failed to connect') ||
+        err.message?.includes('unreachable');
+
+      if (isNetworkFailure) {
+        try {
+          const offlinePatient = await saveOfflinePatient(payload);
+          setGeneratedId(offlinePatient.id);
+          setIsSavedOffline(true);
+          setStep(3); // success
+          return;
+        } catch (saveErr: any) {
+          setError(saveErr.message || 'Failed to save patient locally');
+          return;
+        }
+      }
+
+      setError(err.message || 'Failed to register patient. Please check your connection.');
     } finally {
       setIsSubmitting(false);
     }
@@ -98,10 +194,15 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
           <h1 className="font-display text-xl font-bold text-gray-900">Register New Patient</h1>
           <p className="text-xs text-gray-500">Create a secure longitudinal health record</p>
         </div>
-        {isOffline && (
+        {isOffline ? (
           <div className="ml-auto px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 font-semibold flex items-center gap-1">
             <Icon name="wifi_off" size={11} />
-            Offline
+            Offline Mode
+          </div>
+        ) : (
+          <div className="ml-auto px-2 py-1 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 font-semibold flex items-center gap-1">
+            <Icon name="check" size={11} />
+            Online Mode
           </div>
         )}
       </div>
@@ -187,6 +288,18 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
                   <span className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-500">+91</span>
                   <input value={form.phone} onChange={e => update('phone', e.target.value)} placeholder="9XXXXXXXXX" className={`${inputClass} flex-1`} />
                 </div>
+              </div>
+              <div>
+                <label className={labelClass}>Security Login PIN (4 Digits) *</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={form.pin}
+                  onChange={e => update('pin', e.target.value)}
+                  placeholder="1234"
+                  className={`${inputClass} font-mono tracking-wider`}
+                />
+                <p className="text-[10px] text-gray-500 mt-0.5">Default is 1234. Patient uses this PIN to log in.</p>
               </div>
               <div>
                 <label className={labelClass}>Village / Town *</label>
@@ -276,16 +389,18 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
           </div>
         )}
 
-        {/* Step 4: Health ID Generated */}
+        {/* Step 4: Health ID Generated & Credentials Card */}
         {step === 3 && (
           <div className="text-center space-y-6">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <Icon name="check" size={28} className="text-green-600" />
+            <div className={`w-16 h-16 ${isSavedOffline ? 'bg-amber-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto`}>
+              <Icon name={isSavedOffline ? 'wifi_off' : 'check'} size={28} className={isSavedOffline ? 'text-amber-600' : 'text-green-600'} />
             </div>
             <div>
-              <h2 className="font-display text-xl font-bold text-gray-900">Registration Successful!</h2>
+              <h2 className="font-display text-xl font-bold text-gray-900">
+                {isSavedOffline ? 'Patient Saved Locally (Offline)' : 'Registration Successful!'}
+              </h2>
               <p className="text-sm text-gray-500 mt-1">
-                <strong>{registeredPatient?.name || form.name}</strong> has been registered in the database.
+                <strong>{registeredPatient?.name || form.name}</strong> {isSavedOffline ? 'saved to offline storage.' : 'has been registered in the database.'}
               </p>
               {registeredPatient?.abhaAddress && (
                 <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-teal-50 border border-teal-200 rounded-full text-xs text-teal-700 font-mono">
@@ -294,19 +409,95 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
               )}
             </div>
 
+            {/* Patient Login Credentials Summary Card */}
+            <div className="bg-gradient-to-br from-teal-900 to-teal-800 text-white rounded-3xl p-6 shadow-xl text-left space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-teal-700/60">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-teal-700/80 flex items-center justify-center text-teal-200">
+                    <Icon name="key" size={16} />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-base text-white">Patient Login Credentials</h3>
+                    <p className="text-[11px] text-teal-200">Share with patient for direct mobile login</p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 bg-teal-700/50 rounded-full text-[10px] font-bold text-teal-200 uppercase tracking-wider">
+                  {isSavedOffline ? 'Offline Queue' : 'Real DB Account'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="p-3 bg-white/10 rounded-2xl">
+                  <div className="text-[10px] uppercase font-bold text-teal-300">Registered Name</div>
+                  <div className="font-semibold text-sm text-white mt-0.5">{registeredPatient?.name || form.name}</div>
+                  {registeredPatient?.nameHi && <div className="text-xs text-teal-200">{registeredPatient.nameHi}</div>}
+                </div>
+
+                <div className="p-3 bg-white/10 rounded-2xl">
+                  <div className="text-[10px] uppercase font-bold text-teal-300">{isSavedOffline ? 'Temporary ID' : 'Health ID'}</div>
+                  <div className="font-mono font-bold text-sm text-white mt-0.5">{generatedId}</div>
+                </div>
+
+                <div className="p-3 bg-white/10 rounded-2xl">
+                  <div className="text-[10px] uppercase font-bold text-teal-300">Login Mobile Number</div>
+                  <div className="font-mono font-bold text-base text-teal-100 mt-0.5">
+                    +91 {registeredPatient?.phone || form.phone}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-teal-500/20 border border-teal-400/30 rounded-2xl">
+                  <div className="text-[10px] uppercase font-bold text-teal-300">Default Login PIN</div>
+                  <div className="font-mono font-bold text-xl text-teal-100 mt-0.5 tracking-wider">
+                    {credentials?.pin || form.pin || '1234'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-teal-700/40 rounded-2xl flex items-center justify-between text-xs text-teal-200">
+                <span>Assigned ASHA Worker:</span>
+                <strong className="text-white">{registeredPatient?.healthWorkerName || 'Community Health Worker'}</strong>
+              </div>
+
+              <button
+                onClick={() => {
+                  const credText = `RuralCare Patient Login Credentials\nName: ${registeredPatient?.name || form.name}\nHealth ID: ${generatedId}\nLogin Phone: +91 ${registeredPatient?.phone || form.phone}\nLogin PIN: ${credentials?.pin || form.pin || '1234'}\nAssigned ASHA: ${registeredPatient?.healthWorkerName || 'Community Health Worker'}\nPortal: Select 'Patient' and log in with your phone and PIN.`;
+                  navigator.clipboard?.writeText(credText);
+                  setCopiedToast(true);
+                  setTimeout(() => setCopiedToast(false), 2500);
+                }}
+                className="w-full py-3 bg-white hover:bg-teal-50 text-teal-900 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
+              >
+                <Icon name="clipboard" size={14} />
+                {copiedToast ? 'Credentials Copied to Clipboard!' : 'Copy Login Credentials'}
+              </button>
+            </div>
+
             <div className="flex justify-center">
               <HealthIDCard id={generatedId} name={registeredPatient?.name || form.name} size="lg" />
-              <p className="text-sm text-gray-500 mt-1">{form.name || 'Patient'} has been registered in the system.</p>
             </div>
 
-            <div className="flex justify-center">
-              <HealthIDCard id={generatedId} name={form.name || 'Patient'} size="lg" />
-            </div>
-
-            {isOffline && (
-              <div className="flex items-center justify-center gap-2 text-xs text-amber-700 bg-amber-50 rounded-xl px-4 py-2.5 border border-amber-200">
-                <Icon name="wifi_off" size={13} />
-                Record saved locally. Will sync when connectivity is restored.
+            {isSavedOffline ? (
+              <div className="flex flex-col items-center gap-1.5 text-xs text-amber-800 bg-amber-50 rounded-xl p-4 border border-amber-200">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Icon name="wifi_off" size={14} />
+                  Patient saved locally
+                </div>
+                <p className="text-amber-700 text-center">
+                  It will automatically sync when internet connection is restored.
+                </p>
+                <div className="mt-1 text-[11px] font-mono text-amber-900 bg-amber-100/70 px-2.5 py-1 rounded-md">
+                  Temporary ID: {generatedId}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-1 text-xs text-green-800 bg-green-50 rounded-xl px-4 py-3 border border-green-200">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Icon name="check" size={14} className="text-green-600" />
+                  Patient registered successfully
+                </div>
+                <p className="text-green-700 font-mono">
+                  Health ID: {generatedId}
+                </p>
               </div>
             )}
 
@@ -323,16 +514,6 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
                   {a.label}
                 </button>
               ))}
-            </div>
-
-            {/* QR placeholder */}
-            <div className="border-2 border-dashed border-gray-200 rounded-2xl p-6 max-w-xs mx-auto">
-              <div className="grid grid-cols-5 gap-1 opacity-30">
-                {Array.from({ length: 25 }).map((_, i) => (
-                  <div key={i} className={`w-full aspect-square rounded-sm ${Math.random() > 0.5 ? 'bg-gray-900' : 'bg-transparent'}`} />
-                ))}
-              </div>
-              <p className="text-[10px] text-gray-400 mt-3 font-mono">{generatedId}</p>
             </div>
 
             <button onClick={() => navigate('patient-profile', registeredPatient?.id || registeredPatient?.healthId || generatedId)}
@@ -405,7 +586,7 @@ export default function PatientRegistration({ navigate, isOffline }: Props) {
                 disabled={isSubmitting}
                 className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-xl transition-colors text-sm disabled:opacity-50"
               >
-                {isSubmitting ? 'Registering...' : step < 2 ? 'Continue' : 'Register Patient'}
+                {isSubmitting ? (isOffline ? 'Saving Patient Locally...' : 'Registering...') : step < 2 ? 'Continue' : 'Register Patient'}
               </button>
             </div>
           </div>

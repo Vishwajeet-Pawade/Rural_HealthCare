@@ -12,12 +12,14 @@ import aiRoutes from './ai.routes.js';
 import dashboardRoutes from './dashboard.routes.js';
 import abdmMockRoutes from './abdm.mock.routes.js';
 import emergencyRoutes from './emergency.routes.js';
+import symptomRoutes from './symptom.routes.js';
 
 const router = Router();
 
 router.use('/auth', authRoutes);
 router.use('/patients', patientRoutes);
 router.use('/assessments', assessmentRoutes);
+router.use('/symptoms', symptomRoutes);
 router.use('/doctors', doctorRoutes);
 router.use('/workers', workerRoutes);
 router.use('/consultations', consultationRoutes);
@@ -26,6 +28,7 @@ router.use('/medicines', medicineRoutes);
 router.use('/ai-assessments', aiRoutes);
 router.use('/dashboards', dashboardRoutes);
 router.use('/abdm/mock', abdmMockRoutes);
+router.use('/abdm', abdmMockRoutes);
 router.use('/emergency', emergencyRoutes);
 router.use('/sos', emergencyRoutes);
 

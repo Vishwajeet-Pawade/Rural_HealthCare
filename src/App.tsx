@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Role } from './types';
 import { Icon, OfflineIndicator } from './components/shared';
 import { getCurrentUser, getToken, clearToken, dispatchSosAlert, getActiveSosAlerts, acceptSosAlert, declineSosAlert } from './api/client';
+import { syncEngine } from './services/syncEngine';
 
 import LoginScreen from './screens/LoginScreen';
 import WorkerDashboard from './screens/WorkerDashboard';
@@ -68,6 +69,10 @@ export interface CurrentUser {
     village?: string;
     district?: string;
     state?: string;
+    familyDoctorId?: string;
+    familyDoctorName?: string;
+    healthWorkerId?: string;
+    healthWorkerName?: string;
   };
 }
 
@@ -165,11 +170,6 @@ const NAV: Record<Role, NavItem[]> = {
       id: 'patient-profile',
       label: 'My Account',
       icon: 'user',
-    },
-    {
-      id: 'health-assessment',
-      label: 'Self Report',
-      icon: 'clipboard',
     },
     {
       id: 'consent',
@@ -357,6 +357,32 @@ export default function App() {
   const [isOffline, setIsOffline] =
     useState(false);
 
+  const [pendingSync, setPendingSync] =
+    useState(0);
+
+  useEffect(() => {
+    function updatePending() {
+      syncEngine.getPendingCount().then(setPendingSync).catch(() => {});
+    }
+    updatePending();
+    const unsubscribe = syncEngine.subscribe(updatePending);
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  const prevOfflineRef = useRef(isOffline);
+
+  useEffect(() => {
+    syncEngine.setSimulatedOffline(isOffline);
+    if (prevOfflineRef.current && !isOffline) {
+      syncEngine.flushOutbox().catch((err) => {
+        console.warn('Auto flush on reconnect failed:', err);
+      });
+    }
+    prevOfflineRef.current = isOffline;
+  }, [isOffline]);
+
   const [lang, setLang] =
     useState<'en' | 'hi'>('en');
 
@@ -387,6 +413,12 @@ export default function App() {
 
   const [selectedPatientId, setSelectedPatientId] =
     useState<string | null>(null);
+
+  const [headerSearch, setHeaderSearch] =
+    useState('');
+
+  const [autoOpenEditProfile, setAutoOpenEditProfile] =
+    useState(false);
 
   useEffect(() => {
     const token = getToken();
@@ -526,6 +558,7 @@ export default function App() {
         role: fromRole,
         patientHealthId: patientId || 'RHC-EMERGENCY',
         location,
+        targetedDoctorId: currentUser?.patientProfile?.familyDoctorId || undefined,
       }).catch((err) => console.warn('SOS broadcast error:', err));
     }
   }
@@ -610,6 +643,14 @@ export default function App() {
     nextScreen: string,
     patientId?: string
   ) {
+    if (nextScreen === 'patient-profile-edit') {
+      setAutoOpenEditProfile(true);
+      setScreen('patient-profile');
+      setSidebarOpen(false);
+      return;
+    }
+
+    setAutoOpenEditProfile(false);
     if (patientId) {
       setSelectedPatientId(
         patientId
@@ -628,9 +669,6 @@ export default function App() {
     setSelectedPatientId(null);
     setSidebarOpen(false);
   }
-
-  const pendingSync =
-    isOffline ? 4 : 0;
 
   if (role === 'login') {
     if (
@@ -905,6 +943,14 @@ export default function App() {
               />
 
               <input
+                value={headerSearch}
+                onChange={(e) => setHeaderSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && headerSearch.trim()) {
+                    setSelectedPatientId(null);
+                    setScreen('patient-profile');
+                  }
+                }}
                 placeholder="Search patient..."
                 className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-400 bg-gray-50"
               />
@@ -1042,8 +1088,16 @@ export default function App() {
               navigate={
                 navigate
               }
+              currentUser={
+                currentUser
+              }
+              autoOpenEdit={
+                autoOpenEditProfile
+              }
               patientId={
-                selectedPatientId
+                role === 'patient'
+                  ? (currentUser?.patientProfile?.healthId || currentUser?.patientProfile?.id)
+                  : selectedPatientId
               }
             />
           )}
@@ -1054,6 +1108,7 @@ export default function App() {
               navigate={
                 navigate
               }
+              patientId={selectedPatientId || undefined}
             />
           )}
 
@@ -1072,6 +1127,7 @@ export default function App() {
               navigate={
                 navigate
               }
+              patientId={selectedPatientId || undefined}
             />
           )}
 

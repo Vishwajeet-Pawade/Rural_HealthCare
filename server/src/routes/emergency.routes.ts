@@ -17,7 +17,9 @@ const router = Router();
 
 // Break-Glass Emergency Authorization & Audit
 router.post('/authorize', optionalAuth, authorizeEmergencyAccess);
+router.post('/access/authorize', optionalAuth, authorizeEmergencyAccess);
 router.get('/logs', optionalAuth, getEmergencyLogs);
+router.get('/access/logs', optionalAuth, getEmergencyLogs);
 
 // Emergency SOS Endpoints (when mounted under /sos or /emergency)
 router.post('/', optionalAuth, dispatchSosAlert);
