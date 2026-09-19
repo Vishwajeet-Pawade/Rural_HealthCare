@@ -18,11 +18,14 @@ import {
   getPatientAuditLogs,
   getDoctors,
   getWorkers,
+  requestPatientAccess,
 } from '../api/client';
 
 interface Props {
   navigate: (s: string) => void;
   patientId?: string | null;
+  currentUser?: any;
+  autoOpenEdit?: boolean;
 }
 
 const PROFILE_TABS = [
@@ -39,10 +42,12 @@ const PROFILE_TABS = [
 export default function PatientProfile({
   navigate,
   patientId,
+  currentUser: propUser,
+  autoOpenEdit = false,
 }: Props) {
   const [activeTab, setActiveTab] = useState('overview');
   const [patient, setPatient] = useState<any>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<any>(propUser || null);
   const [consultations, setConsultations] = useState<any[]>([]);
   const [referrals, setReferrals] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -72,6 +77,98 @@ export default function PatientProfile({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
   const [saveErrorMsg, setSaveErrorMsg] = useState('');
 
+  // Search state for ASHA / Doctor view
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+
+  // Access request modal state
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [accessDuration, setAccessDuration] = useState<'1 day' | '1 week' | '1 month' | '3 months'>('1 month');
+  const [accessReason, setAccessReason] = useState('Routine health check and clinical history review');
+  const [accessScope, setAccessScope] = useState<string[]>(['Basic Information', 'Consultation History']);
+  const [accessSubmitting, setAccessSubmitting] = useState(false);
+  const [accessError, setAccessError] = useState('');
+  const [accessSuccess, setAccessSuccess] = useState('');
+
+  async function handleSearch(q: string) {
+    setSearchQuery(q);
+    if (!q.trim()) {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+    setSearching(true);
+    try {
+      const list = await getPatients(q.trim());
+      setSearchResults(list || []);
+      setShowSearchDropdown(true);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function handleSelectPatient(selectedPatient: any) {
+    setShowSearchDropdown(false);
+    setSearchQuery('');
+    setLoading(true);
+    try {
+      const targetId = selectedPatient.healthId || selectedPatient.id;
+      const res = await getPatientByHealthId(targetId);
+      if (res?.patient) {
+        setPatient({
+          ...res.patient,
+          id: res.patient.healthId || res.patient.id,
+        });
+        setConsultations(mapConsultations(res.consultations, res.patient));
+        setReferrals(mapReferrals(res.referrals, res.patient));
+        setAuditLogs(res.patient.auditEntries || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRequestAccess() {
+    if (!patient) return;
+    setAccessSubmitting(true);
+    setAccessError('');
+    setAccessSuccess('');
+
+    try {
+      const targetId = patient.healthId || patient.id;
+      const res = await requestPatientAccess(targetId, {
+        duration: accessDuration,
+        reason: accessReason.trim() || 'Clinical care and longitudinal review',
+        dataScope: accessScope,
+      });
+
+      setAccessSuccess('Access request sent successfully! Awaiting patient approval.');
+      setPatient((prev: any) => ({
+        ...prev,
+        pendingRequest: res?.request || {
+          purpose: accessReason,
+          dataScope: accessScope,
+          expiresAt: accessDuration,
+          createdAt: new Date().toISOString(),
+        },
+      }));
+      setTimeout(() => {
+        setShowAccessModal(false);
+        setAccessSuccess('');
+      }, 1800);
+    } catch (err: any) {
+      setAccessError(err?.message || 'Failed to submit access request.');
+    } finally {
+      setAccessSubmitting(false);
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -79,7 +176,8 @@ export default function PatientProfile({
     async function load() {
       try {
         const user = await getCurrentUser().catch(() => null);
-        if (mounted) setCurrentUser(user);
+        const effectiveUser = user || propUser;
+        if (mounted && effectiveUser) setCurrentUser(effectiveUser);
 
         // Fetch doctors and workers for profile dropdowns
         getDoctors().then(docs => {
@@ -90,9 +188,17 @@ export default function PatientProfile({
           if (mounted) setWorkersList(wrks || []);
         }).catch(() => {});
 
-        if (patientId) {
+        const normalizedRole = String(effectiveUser?.role || '').toLowerCase();
+        const userIsPatient = normalizedRole === 'patient';
+
+        let targetPatientId = patientId;
+        if (!targetPatientId && userIsPatient) {
+          targetPatientId = effectiveUser?.patientProfile?.healthId || effectiveUser?.patientProfile?.id;
+        }
+
+        if (targetPatientId) {
           // Specific patient lookup (by Health ID or UUID)
-          const res = await getPatientByHealthId(patientId).catch(() => null);
+          const res = await getPatientByHealthId(targetPatientId).catch(() => null);
 
           if (res?.patient) {
             if (mounted) {
@@ -104,57 +210,40 @@ export default function PatientProfile({
               setReferrals(mapReferrals(res.referrals, res.patient));
               setAuditLogs(res.patient.auditEntries || []);
             }
+          } else if (userIsPatient && effectiveUser?.patientProfile) {
+            if (mounted) {
+              setPatient({
+                ...effectiveUser.patientProfile,
+                id: effectiveUser.patientProfile.healthId || effectiveUser.patientProfile.id,
+              });
+              setConsultations([]);
+              setReferrals([]);
+              setAuditLogs([]);
+            }
           } else {
             // Patient not found
             if (mounted) setPatient(null);
           }
-        } else {
-          // Patient viewing their own profile
-          if (user?.patientProfile) {
-            const pProfile = user.patientProfile;
-            const healthId = pProfile.healthId || pProfile.id;
-
-            const res = healthId ? await getPatientByHealthId(healthId).catch(() => null) : null;
-
-            if (mounted) {
-              if (res?.patient) {
-                setPatient({
-                  ...res.patient,
-                  id: res.patient.healthId || res.patient.id,
-                });
-                setConsultations(mapConsultations(res.consultations, res.patient));
-                setReferrals(mapReferrals(res.referrals, res.patient));
-                setAuditLogs(res.patient.auditEntries || []);
-              } else {
-                // Use profile from auth session
-                setPatient({
-                  ...pProfile,
-                  id: pProfile.healthId || pProfile.id,
-                });
-                setConsultations([]);
-                setReferrals([]);
-                setAuditLogs([]);
-              }
-            }
-          } else if (user?.role === 'worker' || user?.role === 'doctor') {
-            // Fallback for worker/doctor previewing patient profile without selecting one
-            const patientList = await getPatients().catch(() => []);
-            if (patientList && patientList.length > 0 && mounted) {
-              const firstId = patientList[0].healthId || patientList[0].id;
-              const res = await getPatientByHealthId(firstId).catch(() => null);
-              if (res?.patient) {
-                setPatient({
-                  ...res.patient,
-                  id: res.patient.healthId || res.patient.id,
-                });
-                setConsultations(mapConsultations(res.consultations, res.patient));
-                setReferrals(mapReferrals(res.referrals, res.patient));
-                setAuditLogs(res.patient.auditEntries || []);
-              }
-            }
-          } else {
-            if (mounted) setPatient(null);
+        } else if (userIsPatient && effectiveUser?.patientProfile) {
+          if (mounted) {
+            setPatient({
+              ...effectiveUser.patientProfile,
+              id: effectiveUser.patientProfile.healthId || effectiveUser.patientProfile.id,
+            });
+            setConsultations([]);
+            setReferrals([]);
+            setAuditLogs([]);
           }
+        } else if (normalizedRole === 'worker' || normalizedRole === 'doctor') {
+          // For worker/doctor without a preselected patient, show the dedicated search directory
+          if (mounted) {
+            setPatient(null);
+            getPatients().then((list) => {
+              if (mounted) setSearchResults(list || []);
+            }).catch(() => {});
+          }
+        } else {
+          if (mounted) setPatient(null);
         }
       } catch (err) {
         console.error('Failed to load patient profile:', err);
@@ -169,7 +258,14 @@ export default function PatientProfile({
     return () => {
       mounted = false;
     };
-  }, [patientId]);
+  }, [patientId, propUser]);
+
+  // Auto-open edit modal if requested
+  useEffect(() => {
+    if (autoOpenEdit && patient && !isEditing) {
+      handleOpenEdit();
+    }
+  }, [autoOpenEdit, patient]);
 
   // Sync editForm when patient is loaded or editing opens
   function handleOpenEdit() {
@@ -312,27 +408,143 @@ export default function PatientProfile({
     );
   }
 
+  const normalizedUserRole = String(currentUser?.role || propUser?.role || '').toLowerCase();
+  const isPatientUser = normalizedUserRole === 'patient';
+  const isDoctorUser = normalizedUserRole === 'doctor';
+  const isWorkerUser = normalizedUserRole === 'worker';
+  const backDestination = isPatientUser ? 'patient-dashboard' : isDoctorUser ? 'doctor-dashboard' : 'worker-dashboard';
+
   if (!patient) {
-    return (
-      <div className="p-6 max-w-4xl mx-auto text-center py-16">
-        <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-gray-400">
-          <Icon name="user" size={32} />
+    if (isPatientUser) {
+      return (
+        <div className="p-6 max-w-4xl mx-auto text-center py-16">
+          <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-gray-400">
+            <Icon name="user" size={32} />
+          </div>
+          <h2 className="font-display text-lg font-bold text-gray-900">Loading Profile Details...</h2>
+          <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+            Your patient health records are being loaded from the secure ABDM network.
+          </p>
+          <button
+            onClick={() => navigate('patient-dashboard')}
+            className="mt-5 px-5 py-2.5 bg-brand-600 text-white rounded-xl text-xs font-semibold hover:bg-brand-700 transition-colors"
+          >
+            Return to Dashboard
+          </button>
         </div>
-        <h2 className="font-display text-lg font-bold text-gray-900">Patient Record Not Found</h2>
-        <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-          No profile record was found for this ID. If you just registered, your record is syncing securely with the ABDM network.
-        </p>
-        <button
-          onClick={() => navigate(currentUser?.role === 'patient' ? 'patient-dashboard' : 'worker-dashboard')}
-          className="mt-5 px-5 py-2.5 bg-brand-600 text-white rounded-xl text-xs font-semibold hover:bg-brand-700 transition-colors"
-        >
-          Return to Dashboard
-        </button>
+      );
+    }
+
+    // Dedicated Search Patient view for ASHA Worker and Doctor
+    return (
+      <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => navigate(backDestination)}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 transition-colors"
+          >
+            <Icon name="chevron_right" size={14} className="rotate-180" />
+            Back to Dashboard
+          </button>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-50 border border-brand-200 text-brand-700 rounded-xl text-xs font-semibold">
+            <Icon name="search" size={13} />
+            <span>Search Patient Directory</span>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
+          <div>
+            <h1 className="font-display text-xl font-bold text-gray-900">Search Patient</h1>
+            <p className="text-xs text-gray-500 mt-1">
+              Search by Patient Name or Health ID (e.g. <code>RHC-2026-XXXXXX</code>) across your assigned area.
+            </p>
+          </div>
+
+          <div className="relative">
+            <Icon name="search" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              placeholder="Search by name, mobile, or Health ID (RHC-2026-...)"
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:bg-white transition-all"
+              autoFocus
+            />
+            {searching && (
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+            )}
+          </div>
+
+          <div className="p-3 bg-brand-50/70 border border-brand-100 rounded-2xl text-[11px] text-brand-800 flex items-start gap-2">
+            <Icon name="shield" size={15} className="shrink-0 mt-0.5 text-brand-600" />
+            <span>
+              <strong>Consent-First Architecture Active:</strong> Searching displays non-sensitive demographic identification only. Protected medical records and clinical history require patient-approved consent.
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-1">
+            {searchQuery ? `Search Results (${searchResults.length})` : `Area Patients (${searchResults.length})`}
+          </div>
+
+          {searchResults.length === 0 ? (
+            <div className="bg-white rounded-2xl p-8 text-center border border-gray-100">
+              <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-2 text-gray-400">
+                <Icon name="search" size={20} />
+              </div>
+              <p className="text-sm font-medium text-gray-700">
+                {searchQuery ? `No patients matching "${searchQuery}"` : 'Type above to search for a patient'}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Ensure you enter the exact Health ID or partial name
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {searchResults.map((p: any) => (
+                <div
+                  key={p.id || p.healthId}
+                  className="bg-white p-4 rounded-2xl border border-gray-100 shadow-2xs hover:border-brand-300 transition-all flex flex-col justify-between space-y-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm shrink-0">
+                      {String(p.name || 'P').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-sm text-gray-900 truncate">{p.name}</span>
+                        {p.nameHi && <span className="text-xs text-gray-400">({p.nameHi})</span>}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {p.age} yrs · {p.gender === 'F' || p.gender === 'Female' ? 'Female' : 'Male'} · {p.village || 'Village'}
+                      </div>
+                      <div className="font-mono text-[11px] text-gray-400 mt-1">
+                        {p.healthId}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-50 flex items-center justify-between">
+                    <span className="text-[10px] text-gray-400 truncate max-w-[140px]">
+                      Assigned: {p.healthWorkerName || 'Health Worker'}
+                    </span>
+                    <button
+                      onClick={() => handleSelectPatient(p)}
+                      className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                    >
+                      Select Patient <Icon name="chevron_right" size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
 
-  const isPatientUser = currentUser?.role === 'patient';
   const nameStr = patient.name || 'Unknown';
   const initials = nameStr
     .split(' ')
@@ -340,29 +552,43 @@ export default function PatientProfile({
     .join('')
     .toUpperCase();
 
-  const backDestination = isPatientUser ? 'patient-dashboard' : currentUser?.role === 'doctor' ? 'doctor-dashboard' : 'worker-dashboard';
-
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-5">
       {/* Navigation & Header Bar */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => navigate(backDestination)}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 transition-colors"
-        >
-          <Icon name="chevron_right" size={14} className="rotate-180" />
-          Back to Dashboard
-        </button>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate(backDestination)}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-600 transition-colors"
+          >
+            <Icon name="chevron_right" size={14} className="rotate-180" />
+            Back to Dashboard
+          </button>
+
+          {!isPatientUser && (
+            <button
+              onClick={() => {
+                setPatient(null);
+                setSearchQuery('');
+                getPatients().then(setSearchResults).catch(() => {});
+              }}
+              className="flex items-center gap-1.5 text-xs text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 border border-brand-200 px-3 py-1.5 rounded-xl font-medium transition-colors cursor-pointer"
+            >
+              <Icon name="search" size={12} />
+              Search Another Patient
+            </button>
+          )}
+        </div>
 
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-teal-50 border border-teal-100 rounded-xl text-[10px] text-teal-700 font-semibold">
             <Icon name="user" size={11} />
-            {isPatientUser ? 'My Health Profile' : currentUser?.role === 'doctor' ? 'Doctor View' : 'ASHA Worker View'}
+            {isPatientUser ? 'My Health Profile (Self)' : currentUser?.role === 'doctor' ? 'Doctor View' : 'ASHA Worker View'}
           </div>
 
           <button
             onClick={handleOpenEdit}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-200 text-brand-700 rounded-xl text-xs font-semibold hover:bg-brand-100 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
             <Icon name="edit" size={12} />
             Edit Profile
@@ -385,6 +611,148 @@ export default function PatientProfile({
           <span>— Verified ABHA & ABDM Identity</span>
         </div>
       </div>
+
+      {/* Patient Search Bar for ASHA Worker / Doctor */}
+      {!isPatientUser && (
+        <div className="relative">
+          <div className="flex items-center gap-2 p-2.5 bg-white rounded-2xl border border-gray-200 shadow-sm focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100 transition-all">
+            <Icon name="search" size={18} className="text-gray-400 ml-2 shrink-0" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              placeholder="Search patient in area by Name, Mobile, or Health ID (e.g. RHC-2026-XXXXXX)..."
+              className="w-full text-sm bg-transparent border-none outline-none text-gray-800 placeholder-gray-400"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchResults([]);
+                  setShowSearchDropdown(false);
+                }}
+                className="text-gray-400 hover:text-gray-600 mr-2 text-sm cursor-pointer"
+              >
+                ×
+              </button>
+            )}
+            {searching && (
+              <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mr-2 shrink-0" />
+            )}
+          </div>
+
+          {/* Search Dropdown */}
+          {showSearchDropdown && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 max-h-64 overflow-y-auto divide-y divide-gray-50">
+              {searchResults.length === 0 ? (
+                <div className="p-4 text-center text-xs text-gray-500">
+                  No patients found matching "{searchQuery}".
+                </div>
+              ) : (
+                searchResults.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleSelectPatient(p)}
+                    className="w-full text-left p-3.5 hover:bg-brand-50/60 flex items-center justify-between transition-colors cursor-pointer"
+                  >
+                    <div>
+                      <div className="font-semibold text-sm text-gray-900">{p.name}</div>
+                      <div className="text-xs text-gray-500 font-mono mt-0.5">
+                        {p.healthId} · +91 {p.phone} · {p.village || 'Village'}
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-brand-600 flex items-center gap-1 bg-brand-50 px-2.5 py-1 rounded-lg">
+                      Select <Icon name="chevron_right" size={12} />
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Access Restricted Notification / Consent Enforcement Card */}
+      {patient.hasAccess === false && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-5 space-y-3 shadow-sm">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-700 shrink-0 mt-0.5">
+                <Icon name="shield" size={20} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-display font-bold text-base text-amber-950">
+                    Access Restricted (Consent Required)
+                  </h2>
+                  <span className="px-2 py-0.5 bg-amber-200 text-amber-900 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                    Protected Health Record
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                  Under DPDP Act & ABDM regulations, you do not have active patient-approved consent to view clinical history, consultations, or diagnostic records for <strong>{patient.name}</strong>. Only basic demographic information is visible.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {patient.pendingRequest ? (
+            <div className="p-3.5 bg-white/90 border border-amber-200 rounded-2xl flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-xs text-amber-900">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                <span>
+                  <strong>Access Request Pending:</strong> Requested for scope{' '}
+                  <em>{Array.isArray(patient.pendingRequest.dataScope) ? patient.pendingRequest.dataScope.join(', ') : 'Clinical Records'}</em>.
+                </span>
+              </div>
+              <span className="text-[11px] font-semibold text-amber-700 bg-amber-100 px-3 py-1 rounded-full">
+                Awaiting Patient Authorization
+              </span>
+            </div>
+          ) : (
+            <div className="pt-1 flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs text-amber-800">
+                Submit an access request for the patient to authorize from their RuralCare mobile portal.
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAccessModal(true);
+                  setAccessError('');
+                  setAccessSuccess('');
+                }}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer"
+              >
+                <Icon name="key" size={14} />
+                Request Patient Access
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Active Consent Banner */}
+      {patient.hasAccess === true && patient.activeConsent && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3 flex items-center justify-between flex-wrap gap-2 shadow-xs">
+          <div className="flex items-center gap-2.5 text-xs text-emerald-900">
+            <Icon name="check" size={16} className="text-emerald-600 shrink-0" />
+            <span>
+              <strong>Consent Active:</strong> Granted to <em>{patient.activeConsent.grantedTo}</em> · Scope:{' '}
+              {Array.isArray(patient.activeConsent.dataScope) ? patient.activeConsent.join(', ') : 'Clinical Records'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-emerald-700">
+            {patient.activeConsent.expiresAt && (
+              <span>Expires: {new Date(patient.activeConsent.expiresAt).toLocaleDateString('en-GB')}</span>
+            )}
+            <span className="px-2 py-0.5 bg-emerald-200 text-emerald-900 rounded-full font-bold uppercase text-[9px]">
+              Authorized
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Primary Patient Card */}
       <Card className="overflow-hidden">
@@ -1154,6 +1522,137 @@ export default function PatientProfile({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Request Patient Access Modal */}
+      {showAccessModal && patient && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
+                  <Icon name="shield" size={18} />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-base text-gray-900">
+                    Request Patient Access
+                  </h3>
+                  <p className="text-[11px] text-gray-500">
+                    {patient.name} ({patient.healthId || patient.id})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAccessModal(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 cursor-pointer"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1.5">
+                  Access Duration *
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['1 day', '1 week', '1 month', '3 months'] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setAccessDuration(d)}
+                      className={`py-2 px-1 text-center rounded-xl border text-xs transition-all cursor-pointer ${
+                        accessDuration === d
+                          ? 'border-brand-600 bg-brand-50 text-brand-700 font-bold shadow-xs'
+                          : 'border-gray-200 text-gray-600 hover:border-brand-200'
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1.5">
+                  Reason for Access *
+                </label>
+                <input
+                  type="text"
+                  value={accessReason}
+                  onChange={(e) => setAccessReason(e.target.value)}
+                  placeholder="e.g. Routine maternal health visit, follow-up"
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1.5">
+                  Requested Data Scope *
+                </label>
+                <div className="space-y-2 bg-gray-50 p-3 rounded-2xl border border-gray-100">
+                  {[
+                    { key: 'Basic Information', desc: 'Demographics, emergency contact, basic profile' },
+                    { key: 'Consultation History', desc: 'Past visits, diagnoses, prescriptions, clinical notes' },
+                    { key: 'HEALTH_ASSESSMENT', desc: 'Record symptoms, triage vitals, and generate AI risk evaluations' },
+                    { key: 'SYMPTOMS & VITALS', desc: 'Record vital signs, triage symptoms, and longitudinal monitoring' },
+                  ].map((s) => (
+                    <label key={s.key} className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={accessScope.includes(s.key)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setAccessScope([...accessScope, s.key]);
+                          } else {
+                            setAccessScope(accessScope.filter((item) => item !== s.key));
+                          }
+                        }}
+                        className="w-4 h-4 rounded accent-brand-600 mt-0.5 cursor-pointer"
+                      />
+                      <div>
+                        <div className="font-semibold text-gray-800">{s.key}</div>
+                        <div className="text-[10px] text-gray-500">{s.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {accessError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium">
+                  {accessError}
+                </div>
+              )}
+
+              {accessSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                  <Icon name="check" size={14} />
+                  {accessSuccess}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAccessModal(false)}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={accessSubmitting || accessScope.length === 0}
+                onClick={handleRequestAccess}
+                className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {accessSubmitting ? 'Submitting…' : 'Submit Access Request'}
+              </button>
+            </div>
           </div>
         </div>
       )}

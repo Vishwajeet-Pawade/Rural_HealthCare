@@ -8,12 +8,13 @@ import {
   updatePatient,
   getPatientAuditLogs,
   getPatientAccessRequests,
+  requestPatientAccess,
 } from '../controllers/patient.controller.js';
 import { requireAuth, optionalAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-router.post('/register', registerPatient);
+router.post('/register', optionalAuth, registerPatient);
 
 router.get('/', getPatients);
 
@@ -26,5 +27,7 @@ router.patch('/:id', requireAuth, updatePatient);
 router.get('/:id/audit-logs', requireAuth, getPatientAuditLogs);
 
 router.get('/:id/access-requests', requireAuth, getPatientAccessRequests);
+
+router.post('/:id/access-requests', requireAuth, requestPatientAccess);
 
 export default router;

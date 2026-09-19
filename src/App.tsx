@@ -387,6 +387,12 @@ export default function App() {
   const [selectedPatientId, setSelectedPatientId] =
     useState<string | null>(null);
 
+  const [headerSearch, setHeaderSearch] =
+    useState('');
+
+  const [autoOpenEditProfile, setAutoOpenEditProfile] =
+    useState(false);
+
   useEffect(() => {
     const token = getToken();
 
@@ -610,6 +616,14 @@ export default function App() {
     nextScreen: string,
     patientId?: string
   ) {
+    if (nextScreen === 'patient-profile-edit') {
+      setAutoOpenEditProfile(true);
+      setScreen('patient-profile');
+      setSidebarOpen(false);
+      return;
+    }
+
+    setAutoOpenEditProfile(false);
     if (patientId) {
       setSelectedPatientId(
         patientId
@@ -905,6 +919,14 @@ export default function App() {
               />
 
               <input
+                value={headerSearch}
+                onChange={(e) => setHeaderSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && headerSearch.trim()) {
+                    setSelectedPatientId(null);
+                    setScreen('patient-profile');
+                  }
+                }}
                 placeholder="Search patient..."
                 className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-400 bg-gray-50"
               />
@@ -1042,8 +1064,16 @@ export default function App() {
               navigate={
                 navigate
               }
+              currentUser={
+                currentUser
+              }
+              autoOpenEdit={
+                autoOpenEditProfile
+              }
               patientId={
-                selectedPatientId
+                role === 'patient'
+                  ? (currentUser?.patientProfile?.healthId || currentUser?.patientProfile?.id)
+                  : selectedPatientId
               }
             />
           )}

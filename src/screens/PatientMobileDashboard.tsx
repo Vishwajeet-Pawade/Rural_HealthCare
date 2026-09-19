@@ -234,10 +234,18 @@ export default function PatientMobileDashboard({
           </p>
 
           {loginPhone && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 mt-0.5">
               Phone: <span className="font-medium">{loginPhone}</span>
             </p>
           )}
+
+          <button
+            onClick={() => navigate('patient-profile-edit')}
+            className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-200 text-brand-700 text-xs font-semibold rounded-xl hover:bg-brand-100 transition-colors cursor-pointer shadow-2xs"
+          >
+            <Icon name="edit" size={12} />
+            Edit Profile
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -323,6 +331,29 @@ export default function PatientMobileDashboard({
             <Icon name="share" size={13} />
             Share
           </button>
+        </div>
+      </div>
+
+      {/* Assigned Care Team / ASHA Worker Card */}
+      <div className="bg-white border border-gray-100 rounded-2xl p-3.5 shadow-xs flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-700 shrink-0">
+            <Icon name="user" size={20} />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase font-bold text-teal-700 tracking-wider">
+              Assigned ASHA / Health Worker
+            </div>
+            <div className="text-sm font-bold text-gray-900 mt-0.5">
+              {pt?.healthWorkerName || pt?.healthWorker?.name || 'Meena Kumari (ASHA)'}
+            </div>
+            <div className="text-[11px] text-gray-500">
+              Community Health Center · {patientVillage || 'Local Area'}
+            </div>
+          </div>
+        </div>
+        <div className="px-2.5 py-1 bg-teal-50 border border-teal-200 rounded-full text-[10px] font-bold text-teal-800">
+          Assigned
         </div>
       </div>
 

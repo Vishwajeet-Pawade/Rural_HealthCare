@@ -82,12 +82,18 @@ async function request<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = getToken();
+  const emergencyToken = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('rc_emergency_token') : null;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(token
       ? {
           Authorization: `Bearer ${token}`,
+        }
+      : {}),
+    ...(emergencyToken
+      ? {
+          'x-emergency-token': emergencyToken,
         }
       : {}),
     ...((options.headers as Record<string, string>) || {}),
@@ -591,7 +597,7 @@ export async function getPatients(
   search?: string
 ): Promise<any[]> {
   const query = search
-    ? `?search=${encodeURIComponent(search)}`
+    ? `?q=${encodeURIComponent(search)}`
     : '';
 
   const res =
@@ -627,6 +633,7 @@ export async function getPatientByHealthId(
 
 export interface CreateConsultationPayload {
   patientId: string;
+  referralId?: string;
   workerId?: string;
   workerName?: string;
   doctorId?: string;
@@ -1069,6 +1076,24 @@ export async function getPatientAuditLogs(patientId: string): Promise<any[]> {
 export async function getPatientAccessRequests(patientId: string): Promise<any[]> {
   const res = await request<ApiResponse<{ requests: any[] }>>(`/patients/${encodeURIComponent(patientId)}/access-requests`);
   return res.data?.requests || [];
+}
+
+export async function requestPatientAccess(
+  patientId: string,
+  payload: {
+    duration: '1 day' | '1 week' | '1 month' | '3 months' | string;
+    reason: string;
+    dataScope: string[];
+  }
+): Promise<any> {
+  const res = await request<ApiResponse<{ request: any }>>(
+    `/patients/${encodeURIComponent(patientId)}/access-requests`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  return res.data;
 }
 
 export async function getWorkers(): Promise<any[]> {

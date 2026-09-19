@@ -26,6 +26,7 @@ router.use('/medicines', medicineRoutes);
 router.use('/ai-assessments', aiRoutes);
 router.use('/dashboards', dashboardRoutes);
 router.use('/abdm/mock', abdmMockRoutes);
+router.use('/abdm', abdmMockRoutes);
 router.use('/emergency', emergencyRoutes);
 router.use('/sos', emergencyRoutes);
 
