@@ -50,7 +50,7 @@ export function isScopePermitted(grantedScopes: string[], requiredScope?: string
     // Health assessment mapping
     if (
       (normalizedRequired.includes('assessment') || normalizedRequired.includes('ai')) &&
-      (s.includes('assessment') || s.includes('ai'))
+      (s.includes('assessment') || s.includes('ai') || s.includes('consult') || s.includes('vital') || s.includes('clinical'))
     ) {
       return true;
     }
@@ -298,7 +298,7 @@ export async function checkPatientAccess(params: AccessCheckParams): Promise<Acc
       ...(user.facilityId ? [{ facilityId: user.facilityId }] : []),
     ];
 
-    const validConsent = await prisma.consentArtifact.findFirst({
+    const validConsents = await prisma.consentArtifact.findMany({
       where: {
         patientId: patient.id,
         status: ConsentStatus.GRANTED,
@@ -312,23 +312,23 @@ export async function checkPatientAccess(params: AccessCheckParams): Promise<Acc
       orderBy: { createdAt: 'desc' },
     });
 
-    if (validConsent) {
-      const scopes = Array.isArray(validConsent.dataScope) ? validConsent.dataScope : [];
-      if (isScopePermitted(scopes, requiredScope)) {
+    if (validConsents.length > 0) {
+      const mergedScopes = Array.from(new Set(validConsents.flatMap((c) => Array.isArray(c.dataScope) ? c.dataScope : [])));
+      if (isScopePermitted(mergedScopes, requiredScope)) {
         return {
           hasAccess: true,
           patient,
-          activeConsent: validConsent,
-          allowedScopes: scopes,
+          activeConsent: validConsents[0],
+          allowedScopes: mergedScopes,
           accessType: 'CONSENT',
         };
       } else {
         return {
           hasAccess: false,
-          reason: `Requested scope '${requiredScope}' is outside the patient's approved consent scope (${scopes.join(', ')})`,
+          reason: `Requested scope '${requiredScope}' is outside the patient's approved consent scope (${mergedScopes.join(', ')})`,
           patient,
-          activeConsent: validConsent,
-          allowedScopes: scopes,
+          activeConsent: validConsents[0],
+          allowedScopes: mergedScopes,
           accessType: 'CONSENT',
         };
       }
@@ -359,7 +359,7 @@ export async function checkPatientAccess(params: AccessCheckParams): Promise<Acc
     const workerName = typeof user.fullName === 'string' ? user.fullName : '';
     const workerCode = user.workerProfile?.workerCode ? String(user.workerProfile.workerCode) : '';
 
-    const validConsent = await prisma.consentArtifact.findFirst({
+    const validConsents = await prisma.consentArtifact.findMany({
       where: {
         patientId: patient.id,
         status: ConsentStatus.GRANTED,
@@ -376,23 +376,23 @@ export async function checkPatientAccess(params: AccessCheckParams): Promise<Acc
       orderBy: { createdAt: 'desc' },
     });
 
-    if (validConsent) {
-      const scopes = Array.isArray(validConsent.dataScope) ? validConsent.dataScope : [];
-      if (isScopePermitted(scopes, requiredScope)) {
+    if (validConsents.length > 0) {
+      const mergedScopes = Array.from(new Set(validConsents.flatMap((c) => Array.isArray(c.dataScope) ? c.dataScope : [])));
+      if (isScopePermitted(mergedScopes, requiredScope)) {
         return {
           hasAccess: true,
           patient,
-          activeConsent: validConsent,
-          allowedScopes: scopes,
+          activeConsent: validConsents[0],
+          allowedScopes: mergedScopes,
           accessType: 'CONSENT',
         };
       } else {
         return {
           hasAccess: false,
-          reason: `Requested scope '${requiredScope}' is outside the patient's approved consent scope (${scopes.join(', ')})`,
+          reason: `Requested scope '${requiredScope}' is outside the patient's approved consent scope (${mergedScopes.join(', ')})`,
           patient,
-          activeConsent: validConsent,
-          allowedScopes: scopes,
+          activeConsent: validConsents[0],
+          allowedScopes: mergedScopes,
           accessType: 'CONSENT',
         };
       }

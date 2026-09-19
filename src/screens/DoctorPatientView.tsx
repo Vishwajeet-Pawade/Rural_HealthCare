@@ -851,7 +851,7 @@ export default function DoctorPatientView({ navigate, patientId }: Props) {
                     <div className="text-xs text-red-600 mt-0.5">{activeReferral.reason || 'Referral pending doctor review'}</div>
                     <div className="text-[10px] text-red-500 mt-1">From: {activeReferral.fromWorker || 'ASHA'} → {activeReferral.toPHC || 'PHC'}</div>
                     <div className="flex items-center gap-2 mt-2">
-                      <button onClick={() => navigate('referral')} className="text-xs text-red-700 font-semibold hover:underline">
+                      <button onClick={() => navigate('referral', patient?.id || patient?.healthId)} className="text-xs text-red-700 font-semibold hover:underline">
                         View Referral →
                       </button>
                       {String(activeReferral.status || '').toLowerCase() !== 'completed' && (
@@ -1010,7 +1010,7 @@ export default function DoctorPatientView({ navigate, patientId }: Props) {
               {[
                 { label: 'Add Diagnosis / Rx', icon: 'clipboard', action: () => setAddingDiagnosis(true), color: 'bg-brand-600 text-white hover:bg-brand-700' },
                 { label: 'Add Treatment Plan', icon: 'pill', action: () => setAddingDiagnosis(true), color: 'bg-purple-600 text-white hover:bg-purple-700' },
-                { label: 'Refer to Specialist / CHC', icon: 'share', action: () => navigate('referral'), color: 'bg-amber-500 text-white hover:bg-amber-600' },
+                { label: 'Refer to Specialist / CHC', icon: 'share', action: () => navigate('referral', patient?.id || patient?.healthId), color: 'bg-amber-500 text-white hover:bg-amber-600' },
                 { label: 'View Longitudinal History', icon: 'history', action: () => setActiveTab('history'), color: 'bg-green-600 text-white hover:bg-green-700' },
               ].map(a => (
                 <button

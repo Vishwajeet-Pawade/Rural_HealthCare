@@ -728,6 +728,7 @@ export interface CreateReferralPayload {
   toFacilityId?: string;
   toFacilityName?: string;
   toPHC?: string;
+  toDoctorId?: string;
   reason: string;
   priority?:
     | 'routine'
@@ -770,6 +771,17 @@ export async function getReferralFacilities(): Promise<any[]> {
     >('/referrals/facilities');
 
   return res.data?.facilities || [];
+}
+
+export async function getReferralDoctors(): Promise<any[]> {
+  const res =
+    await request<
+      ApiResponse<{
+        doctors: any[];
+      }>
+    >('/referrals/doctors');
+
+  return res.data?.doctors || [];
 }
 
 export async function getReferralWorkers(): Promise<any[]> {
@@ -874,6 +886,73 @@ export async function getAiAssessments(
     >(`/ai-assessments${query}`);
 
   return res.data?.assessments || [];
+}
+
+// ─── Standardized Symptoms & XGBoost AI ───────────────────────────────────────
+
+export interface StandardizedSymptom {
+  id: string;
+  code: string;
+  name: string;
+  nameHi?: string;
+  category: string;
+  synonyms: string[];
+  icd10Code?: string;
+  defaultWeight: number;
+}
+
+export async function getSymptoms(query?: string): Promise<StandardizedSymptom[]> {
+  const q = query ? `?q=${encodeURIComponent(query.trim())}` : '';
+  const res = await request<ApiResponse<{ symptoms: StandardizedSymptom[] }>>(`/symptoms${q}`);
+  return res.data?.symptoms || [];
+}
+
+export interface RiskPredictionResponse {
+  riskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+  confidence: number;
+  probabilities: {
+    low: number;
+    moderate: number;
+    high: number;
+    critical: number;
+  };
+  abnormalVitals: string[];
+  reasoning: string;
+  recommendedAction: string;
+  modelVersion: string;
+  standardizedCodes: string[];
+}
+
+export async function predictRisk(payload: {
+  age?: number;
+  gender?: string;
+  vitals: any;
+  symptoms: string[];
+  standardizedSymptomCodes?: string[];
+  obs?: string;
+}): Promise<RiskPredictionResponse> {
+  const res = await request<ApiResponse<RiskPredictionResponse>>('/assessments/predict-risk', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return res.data!;
+}
+
+export async function generateAiAssessment(payload: {
+  patientId: string;
+  symptoms: string[];
+  standardizedSymptomCodes?: string[];
+  vitals: any;
+  obs?: string;
+}): Promise<any> {
+  const res = await request<ApiResponse<{ assessment: any; prediction: RiskPredictionResponse }>>(
+    '/assessments/generate',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  return res.data;
 }
 
 // ─── Doctors ─────────────────────────────────────────────────────────────────
