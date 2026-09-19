@@ -15,6 +15,7 @@ import {
 
 interface Props {
   navigate: (s: string) => void;
+  patientId?: string;
 }
 
 const SYMPTOMS = [
@@ -40,7 +41,7 @@ const SYMPTOMS = [
   'Palpitations',
 ];
 
-export default function HealthAssessment({ navigate }: Props) {
+export default function HealthAssessment({ navigate, patientId }: Props) {
   const [step, setStep] = useState<'patient' | 'vitals' | 'symptoms' | 'review'>('patient');
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [selectedSymptomCodes, setSelectedSymptomCodes] = useState<string[]>([]);
@@ -78,13 +79,23 @@ export default function HealthAssessment({ navigate }: Props) {
           setSelectedPatient(user.patientProfile);
           setStep('vitals');
         } else {
-          getPatients().then(setRealPatients).catch(() => {});
+          getPatients().then((pts) => {
+            setRealPatients(pts || []);
+            if (patientId) {
+              const matched = (pts || []).find(
+                (x: any) => x.id === patientId || x.healthId === patientId
+              );
+              if (matched) {
+                handleSelectPatientForAssessment(matched);
+              }
+            }
+          }).catch(() => {});
         }
       })
       .catch(() => {
         getPatients().then(setRealPatients).catch(() => {});
       });
-  }, []);
+  }, [patientId]);
 
   function addSymptom(name: string, code?: string) {
     if (!selectedSymptoms.includes(name)) {

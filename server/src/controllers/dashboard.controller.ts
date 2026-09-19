@@ -253,24 +253,49 @@ export async function getDoctorDashboard(req: Request, res: Response, next: Next
           }
         : { id: 'NO_MATCH' };
 
-    const patientWhere: any = activeDoctorId
-      ? {
-          OR: [
-            { familyDoctorId: activeDoctorId },
-            { referrals: { some: { toDoctorId: activeDoctorId } } },
-          ],
-        }
-      : { id: 'NO_MATCH' };
+    // Build Doctor matching consent filters
+    const doctorDisplayName = doctorRecord?.name || user?.fullName || '';
+    const cleanDocName = doctorDisplayName.replace(/^Dr\.?\s*/i, '').trim();
+    const nowIso = new Date().toISOString();
 
-    const consultationWhere: any = activeDoctorId
+    const consentDoctorFilters: any[] = [
+      ...(doctorDisplayName ? [{ grantedTo: { contains: doctorDisplayName, mode: 'insensitive' as const } }] : []),
+      ...(cleanDocName ? [{ grantedTo: { contains: cleanDocName, mode: 'insensitive' as const } }] : []),
+      ...(activeDoctorId ? [{ grantedTo: { contains: activeDoctorId, mode: 'insensitive' as const } }] : []),
+      ...(activeFacilityId ? [{ facilityId: activeFacilityId }] : []),
+    ];
+
+    const activeConsentCondition: any = consentDoctorFilters.length > 0
       ? {
-          patient: {
-            OR: [
-              { familyDoctorId: activeDoctorId },
-              { referrals: { some: { toDoctorId: activeDoctorId } } },
-            ],
+          consentEntries: {
+            some: {
+              status: 'GRANTED',
+              OR: consentDoctorFilters,
+              AND: [
+                {
+                  OR: [{ expiresAt: null }, { expiresAt: { gt: nowIso } }],
+                },
+              ],
+            },
           },
         }
+      : null;
+
+    const patientOrConditions: any[] = [];
+    if (activeDoctorId) {
+      patientOrConditions.push({ familyDoctorId: activeDoctorId });
+      patientOrConditions.push({ referrals: { some: { toDoctorId: activeDoctorId } } });
+    }
+    if (activeConsentCondition) {
+      patientOrConditions.push(activeConsentCondition);
+    }
+
+    const patientWhere: any = patientOrConditions.length > 0
+      ? { OR: patientOrConditions }
+      : { id: 'NO_MATCH' };
+
+    const consultationWhere: any = patientOrConditions.length > 0
+      ? { patient: { OR: patientOrConditions } }
       : { id: 'NO_MATCH' };
 
     // ── 3. Parallel scoped queries ──────────────────────────────────────────
