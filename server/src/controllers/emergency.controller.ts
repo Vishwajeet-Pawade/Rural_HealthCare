@@ -74,6 +74,13 @@ export async function authorizeEmergencyAccess(req: Request, res: Response, next
       minute: '2-digit',
     });
 
+    // Validate facilityId to avoid FK constraint violation
+    let resolvedFacilityId: string | null = null;
+    if (data.facilityId) {
+      const facilityExists = await prisma.facility.findUnique({ where: { id: data.facilityId } });
+      resolvedFacilityId = facilityExists ? data.facilityId : null;
+    }
+
     const logEntry = await prisma.emergencyAccessLog.create({
       data: {
         logCode,
@@ -83,7 +90,7 @@ export async function authorizeEmergencyAccess(req: Request, res: Response, next
         patientName: data.patientName,
         doctorId: data.doctorId || null,
         doctorName: data.doctorName,
-        facilityId: data.facilityId || null,
+        facilityId: resolvedFacilityId,
         facilityName: data.facilityName,
         reason: data.reason,
         note: data.note,

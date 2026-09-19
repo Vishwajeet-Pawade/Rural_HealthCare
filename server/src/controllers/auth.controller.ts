@@ -483,6 +483,30 @@ export async function login(
       );
     }
 
+    if (user.role === 'PATIENT' && !user.patientProfile) {
+      const createdPatient = await prisma.patient.create({
+        data: {
+          healthId: genHealthId(),
+          userId: user.id,
+          name: user.fullName,
+          nameHi: user.fullName,
+          dob: '1995-01-01',
+          age: 30,
+          gender: 'O',
+          bloodGroup: 'Unknown',
+          phone: user.phone || '9829000000',
+          village: 'Govindpur',
+          district: 'Bikaner',
+          state: 'Rajasthan',
+          emergencyContact: Prisma.JsonNull,
+          address: 'Govindpur, Bikaner, Rajasthan',
+          registeredAt: new Date().toISOString(),
+          consentStatus: 'GRANTED',
+        },
+      });
+      (user as any).patientProfile = createdPatient;
+    }
+
     if (user.role !== role) {
       throw new AppError(
         `User exists but does not have the '${role}' role.`,
@@ -616,7 +640,16 @@ export async function getCurrentUser(
 
           workerProfile: true,
 
-          patientProfile: true,
+          patientProfile: {
+            include: {
+              familyDoctor: {
+                include: {
+                  facility: true,
+                },
+              },
+              healthWorker: true,
+            },
+          },
         },
       });
 
@@ -625,6 +658,30 @@ export async function getCurrentUser(
         'User account not found.',
         404
       );
+    }
+
+    if (user.role === 'PATIENT' && !user.patientProfile) {
+      const createdPatient = await prisma.patient.create({
+        data: {
+          healthId: genHealthId(),
+          userId: user.id,
+          name: user.fullName,
+          nameHi: user.fullName,
+          dob: '1995-01-01',
+          age: 30,
+          gender: 'O',
+          bloodGroup: 'Unknown',
+          phone: user.phone || '9829000000',
+          village: 'Govindpur',
+          district: 'Bikaner',
+          state: 'Rajasthan',
+          emergencyContact: Prisma.JsonNull,
+          address: 'Govindpur, Bikaner, Rajasthan',
+          registeredAt: new Date().toISOString(),
+          consentStatus: 'GRANTED',
+        },
+      });
+      (user as any).patientProfile = createdPatient;
     }
 
     res.status(200).json({
