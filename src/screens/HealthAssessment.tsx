@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Icon, Card, HealthIDCard } from '../components/shared';
 import {
   createConsultation,
@@ -53,6 +53,9 @@ export default function HealthAssessment({ navigate }: Props) {
   const [accessBlockedPatient, setAccessBlockedPatient] = useState<any>(null);
   const [requestSent, setRequestSent] = useState(false);
   const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [accessDuration, setAccessDuration] = useState<'1 day' | '1 week' | '1 month' | '3 months'>('1 month');
+  const [accessReason, setAccessReason] = useState('');
+  const [accessScope, setAccessScope] = useState<string[]>(['Basic Information', 'Consultation History']);
 
   useEffect(() => {
     getCurrentUser()
@@ -91,27 +94,58 @@ export default function HealthAssessment({ navigate }: Props) {
   const steps = ['Patient', 'Vitals', 'Symptoms', 'Review'];
   const stepIdx = { patient: 0, vitals: 1, symptoms: 2, review: 3 }[step];
 
-  const filteredPatients = realPatients.filter((p: any) => {
-    if (!patientSearch.trim()) return true;
+  const filteredPatients = useMemo(() => {
+    const seen = new Set<string>();
+    const list: any[] = [];
+    for (const p of realPatients) {
+      const normName = (p.name || '').trim().toLowerCase();
+      if (!normName || seen.has(normName)) continue;
+      seen.add(normName);
+      list.push(p);
+    }
+    if (!patientSearch.trim()) return list;
     const q = patientSearch.toLowerCase().trim();
-    return (
+    return list.filter((p: any) =>
       (p.name && p.name.toLowerCase().includes(q)) ||
       (p.healthId && p.healthId.toLowerCase().includes(q)) ||
       (p.phone && p.phone.includes(q)) ||
       (p.village && p.village.toLowerCase().includes(q))
     );
-  });
+  }, [realPatients, patientSearch]);
 
   async function handleSelectPatientForAssessment(p: any) {
     setCheckingAccess(true);
     setAccessBlockedPatient(null);
     setRequestSent(false);
+    setAccessReason('Health assessment, vital signs triage, and clinical evaluation');
     setSubmitError('');
 
     try {
-      const res = await getPatientByHealthId(p.healthId || p.id);
-      if (res?.hasAccess === false || res?.patient?.hasAccess === false) {
-        setAccessBlockedPatient(res?.patient || p);
+      const targetLookup = p.healthId || p.id;
+      const res = await getPatientByHealthId(targetLookup, 'health_assessment');
+      
+      const isDoctor = dbUser?.role === 'DOCTOR';
+      // For doctor, access requires explicit active consent; for worker, requires worker authorization
+      const needsConsent = isDoctor
+        ? (!res?.hasAccess || !res?.activeConsent)
+        : (res?.hasAccess === false || res?.patient?.hasAccess === false);
+
+      if (needsConsent) {
+        const dynamicPatient = {
+          ...p,
+          ...(res?.patient || {}),
+          id: p.id || res?.patient?.id,
+          rawId: p.id || res?.patient?.id,
+          healthId: p.healthId || res?.patient?.healthId,
+          name: p.name || res?.patient?.name,
+          age: p.age ?? res?.patient?.age,
+          gender: p.gender || res?.patient?.gender,
+          existingPendingRequest: res?.pendingRequest || null,
+        };
+        setAccessBlockedPatient(dynamicPatient);
+        if (res?.pendingRequest) {
+          setRequestSent(true);
+        }
       } else {
         setSelectedPatient(res?.patient || p);
         setStep('vitals');
@@ -144,7 +178,9 @@ export default function HealthAssessment({ navigate }: Props) {
     try {
       await createConsultation({
         patientId: selectedPatient?.healthId || selectedPatient?.id,
-        workerName: dbUser?.fullName || dbUser?.workerProfile?.name || 'Health Worker',
+        workerName: dbUser?.fullName || dbUser?.workerProfile?.name || (dbUser?.role === 'DOCTOR' ? 'Attending Doctor' : 'Health Worker'),
+        doctorId: dbUser?.doctorProfile?.id,
+        doctorName: dbUser?.role === 'DOCTOR' ? (dbUser?.fullName || 'Doctor') : undefined,
         symptoms: selectedSymptoms,
         vitals: {
           temperature: vitals.temp,
@@ -176,7 +212,7 @@ export default function HealthAssessment({ navigate }: Props) {
     <div className="p-6 max-w-2xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <button
-          onClick={() => navigate('worker-dashboard')}
+          onClick={() => navigate(dbUser?.role === 'DOCTOR' ? 'doctor-dashboard' : 'worker-dashboard')}
           className="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer"
         >
           <Icon name="chevron_right" size={18} className="rotate-180 text-gray-600" />
@@ -250,68 +286,161 @@ export default function HealthAssessment({ navigate }: Props) {
               </div>
             )}
 
-            {/* Access Blocked Banner */}
+            {/* Access Blocked — Full Consent Request Form */}
             {accessBlockedPatient && (
-              <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-3">
+              <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-4">
+                {/* Header */}
                 <div className="flex items-start gap-3">
                   <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700 shrink-0 mt-0.5">
                     <Icon name="shield" size={18} />
                   </div>
                   <div>
                     <div className="font-bold text-sm text-amber-950">
-                      Patient Consent Required for Clinical Assessment
+                      Patient Consent Required
                     </div>
-                    <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                      Under DPDP Act regulations, recording health assessments, vitals, or clinical symptoms for <strong>{accessBlockedPatient.name}</strong> requires active, patient-authorized consent.
+                    <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                      Under DPDP Act, you must request access before recording assessments for this patient.
                     </p>
                   </div>
                 </div>
 
                 {requestSent ? (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2">
-                    <Icon name="check" size={16} className="text-emerald-600 shrink-0" />
-                    <span>Access request sent successfully! Once {accessBlockedPatient.name} authorizes from their RuralCare mobile portal, return here to record their assessment.</span>
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Icon name="check" size={16} className="text-emerald-600 shrink-0" />
+                      <span>
+                        {accessBlockedPatient.existingPendingRequest
+                          ? <>An access request (<strong>{accessBlockedPatient.existingPendingRequest.consentCode}</strong>) is already pending approval from <strong>{accessBlockedPatient.name}</strong>.</>
+                          : <>Access request sent! Once <strong>{accessBlockedPatient.name}</strong> approves from their RuralCare portal, return here to proceed.</>}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccessBlockedPatient(null);
+                        setRequestSent(false);
+                      }}
+                      className="px-3 py-1 bg-white border border-emerald-300 text-emerald-700 rounded-lg text-xs hover:bg-emerald-50 cursor-pointer font-bold shrink-0"
+                    >
+                      Select Another Patient
+                    </button>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setAccessBlockedPatient(null)}
-                      className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
-                    >
-                      Choose another patient
-                    </button>
-                    <button
-                      type="button"
-                      disabled={requestSubmitting}
-                      onClick={async () => {
-                        setRequestSubmitting(true);
-                        try {
-                          await requestPatientAccess(
-                            accessBlockedPatient.healthId || accessBlockedPatient.id,
-                            {
-                              duration: '1 month',
-                              reason: 'Health assessment, vital signs triage, and AI risk evaluation',
-                              dataScope: [
-                                'Basic Information',
-                                'HEALTH_ASSESSMENT',
-                                'SYMPTOMS & VITALS',
-                                'Consultations',
-                              ],
-                            }
-                          );
-                          setRequestSent(true);
-                        } catch (err: any) {
-                          alert(err?.message || 'Failed to submit request');
-                        } finally {
-                          setRequestSubmitting(false);
-                        }
-                      }}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <Icon name="key" size={14} />
-                      {requestSubmitting ? 'Sending Request…' : 'Request Patient Access'}
-                    </button>
+                  <div className="space-y-3">
+                    {/* Patient Info */}
+                    <div className="p-3 bg-white border border-amber-200 rounded-xl">
+                      <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1">Requesting Access For</div>
+                      <div className="font-semibold text-sm text-gray-900">{accessBlockedPatient.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {accessBlockedPatient.age && `${accessBlockedPatient.age} yrs`}{accessBlockedPatient.gender && ` · ${accessBlockedPatient.gender === 'F' || accessBlockedPatient.gender === 'Female' ? 'Female' : accessBlockedPatient.gender === 'M' || accessBlockedPatient.gender === 'Male' ? 'Male' : accessBlockedPatient.gender}`}
+                      </div>
+                      <div className="font-mono text-[10px] text-gray-400 mt-0.5">{accessBlockedPatient.healthId || accessBlockedPatient.id}</div>
+                    </div>
+
+                    {/* Duration */}
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 block mb-1.5">Access Duration <span className="text-red-500">*</span></label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {(['1 day', '1 week', '1 month', '3 months'] as const).map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => setAccessDuration(d)}
+                            className={`py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                              accessDuration === d
+                                ? 'bg-amber-600 text-white border-amber-600'
+                                : 'bg-white text-gray-600 border-gray-200 hover:border-amber-400'
+                            }`}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Reason */}
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 block mb-1.5">Reason for Access <span className="text-red-500">*</span></label>
+                      <textarea
+                        value={accessReason}
+                        onChange={(e) => setAccessReason(e.target.value)}
+                        placeholder="e.g. Health assessment, vital signs triage, and AI risk evaluation..."
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white resize-none"
+                      />
+                    </div>
+
+                    {/* Scope */}
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 block mb-1.5">Information Scope <span className="text-red-500">*</span></label>
+                      <div className="space-y-2">
+                        {[
+                          { id: 'Basic Information', label: 'Basic Information', sub: 'Demographics, emergency contact, blood group' },
+                          { id: 'Consultation History', label: 'Consultation History', sub: 'Past diagnoses, prescriptions, clinical notes' },
+                          { id: 'HEALTH_ASSESSMENT', label: 'Health Assessments', sub: 'AI risk assessments, vitals, symptoms' },
+                        ].map(({ id, label, sub }) => (
+                          <label key={id} className="flex items-start gap-2.5 p-2.5 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-amber-300 transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={accessScope.includes(id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setAccessScope((prev) => [...prev, id]);
+                                } else {
+                                  setAccessScope((prev) => prev.filter((s) => s !== id));
+                                }
+                              }}
+                              className="mt-0.5 accent-amber-600"
+                            />
+                            <div>
+                              <div className="text-xs font-semibold text-gray-800">{label}</div>
+                              <div className="text-[10px] text-gray-500">{sub}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAccessBlockedPatient(null);
+                          setRequestSent(false);
+                        }}
+                        className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
+                      >
+                        Choose another patient
+                      </button>
+                      <button
+                        type="button"
+                        disabled={requestSubmitting || !accessReason.trim() || accessScope.length === 0}
+                        onClick={async () => {
+                          setRequestSubmitting(true);
+                          try {
+                            const targetPatientId = accessBlockedPatient.rawId || accessBlockedPatient.id || accessBlockedPatient.healthId;
+                            await requestPatientAccess(
+                              targetPatientId,
+                              {
+                                duration: accessDuration,
+                                reason: accessReason.trim() || 'Health assessment and clinical evaluation',
+                                dataScope: accessScope,
+                              }
+                            );
+                            setRequestSent(true);
+                          } catch (err: any) {
+                            alert(err?.message || 'Failed to submit request');
+                          } finally {
+                            setRequestSubmitting(false);
+                          }
+                        }}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Icon name="key" size={14} />
+                        {requestSubmitting ? 'Sending…' : 'Submit Access Request'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

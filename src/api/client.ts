@@ -611,19 +611,24 @@ export async function getPatients(
 }
 
 export async function getPatientByHealthId(
-  healthId: string
+  healthId: string,
+  purpose?: string
 ): Promise<any> {
+  const query = purpose ? `?purpose=${encodeURIComponent(purpose)}` : '';
   const res =
     await request<
       ApiResponse<{
         patient: any;
         consultations: any[];
         referrals: any[];
+        hasAccess?: boolean;
+        activeConsent?: any;
+        pendingRequest?: any;
       }>
     >(
       `/patients/${encodeURIComponent(
         healthId
-      )}`
+      )}${query}`
     );
 
   return res.data;
